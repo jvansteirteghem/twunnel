@@ -19,6 +19,33 @@ Usage
     protocolFactory = ..
 
     configuration = {
+    }
+
+    tunnel = twunnel.Tunnel(configuration)
+    tunnel.connect("www.google.com", 80, protocolFactory)
+
+.. code:: python
+
+    from twisted.internet import ssl
+    import twunnel
+
+    protocolFactory = ..
+
+    configuration = {
+    }
+
+    contextFactory = ssl.ClientContextFactory()
+
+    tunnel = twunnel.Tunnel(configuration)
+    tunnel.connect("www.google.com", 443, protocolFactory, contextFactory)
+
+.. code:: python
+
+    import twunnel
+
+    protocolFactory = ..
+
+    configuration = {
         "PROXY_SERVER": {
             "TYPE": "HTTP",
             "ADDRESS": "127.0.0.1",
@@ -48,7 +75,7 @@ Usage
     }
 
     tunnel = twunnel.Tunnel(configuration)
-    tunnel.connect("www.google.com", 443, protocolFactory)
+    tunnel.connect("www.google.com", 80, protocolFactory)
 
 License
 -------
