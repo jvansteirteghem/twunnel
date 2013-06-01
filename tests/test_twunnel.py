@@ -27,21 +27,26 @@ class TestTunnelProtocol(protocol.Protocol):
 
 class HTTPTunnelTestCase(unittest.TestCase):
     def setUp(self):
-        self.configuration = {
-            "PROXY_SERVER": {
-                "TYPE": "HTTP",
-                "ADDRESS": "127.0.0.1",
-                "PORT": 8080,
-                "AUTHENTICATION": {
-                    "USERNAME": "",
-                    "PASSWORD": ""
+        self.configuration = \
+        {
+            "PROXY_SERVERS": 
+            [
+                {
+                    "TYPE": "HTTP",
+                    "ADDRESS": "127.0.0.1",
+                    "PORT": 8080,
+                    "AUTHENTICATION": 
+                    {
+                        "USERNAME": "",
+                        "PASSWORD": ""
+                    }
                 }
-            }
+            ]
         }
         self.remoteAddress = "127.0.0.1"
         self.remotePort = 80
         
-        self.protocolFactory = twunnel.HTTPTunnelOutputProtocolFactory(self.configuration, self.remoteAddress, self.remotePort, TestTunnelProtocol())
+        self.protocolFactory = twunnel.HTTPTunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort, TestTunnelProtocol())
         self.protocolFactory.protocol = twunnel.HTTPTunnelOutputProtocol
         self.protocol = self.protocolFactory.buildProtocol((self.remoteAddress, self.remotePort))
         self.transport = proto_helpers.StringTransport()
@@ -60,21 +65,26 @@ class HTTPTunnelTestCase(unittest.TestCase):
 
 class HTTPTunnelBasicAuthenticationTestCase(unittest.TestCase):
     def setUp(self):
-        self.configuration = {
-            "PROXY_SERVER": {
-                "TYPE": "HTTP",
-                "ADDRESS": "127.0.0.1",
-                "PORT": 8080,
-                "AUTHENTICATION": {
-                    "USERNAME": "1",
-                    "PASSWORD": "2"
+        self.configuration = \
+        {
+            "PROXY_SERVERS": 
+            [
+                {
+                    "TYPE": "HTTP",
+                    "ADDRESS": "127.0.0.1",
+                    "PORT": 8080,
+                    "AUTHENTICATION": 
+                    {
+                        "USERNAME": "1",
+                        "PASSWORD": "2"
+                    }
                 }
-            }
+            ]
         }
         self.remoteAddress = "127.0.0.1"
         self.remotePort = 80
         
-        self.protocolFactory = twunnel.HTTPTunnelOutputProtocolFactory(self.configuration, self.remoteAddress, self.remotePort, TestTunnelProtocol())
+        self.protocolFactory = twunnel.HTTPTunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort, TestTunnelProtocol())
         self.protocolFactory.protocol = twunnel.HTTPTunnelOutputProtocol
         self.protocol = self.protocolFactory.buildProtocol((self.remoteAddress, self.remotePort))
         self.transport = proto_helpers.StringTransport()
@@ -87,27 +97,32 @@ class HTTPTunnelBasicAuthenticationTestCase(unittest.TestCase):
         value = self.transport.value()
         self.transport.clear()
         
-        self.assertEqual(value, "CONNECT %s:%d HTTP/1.0\r\nProxy-Authorization: Basic %s\r\n\r\n" % (self.remoteAddress, self.remotePort, base64.standard_b64encode("%s:%s" % (self.configuration["PROXY_SERVER"]["AUTHENTICATION"]["USERNAME"], self.configuration["PROXY_SERVER"]["AUTHENTICATION"]["PASSWORD"]))))
+        self.assertEqual(value, "CONNECT %s:%d HTTP/1.0\r\nProxy-Authorization: Basic %s\r\n\r\n" % (self.remoteAddress, self.remotePort, base64.standard_b64encode("%s:%s" % (self.configuration["PROXY_SERVERS"][0]["AUTHENTICATION"]["USERNAME"], self.configuration["PROXY_SERVERS"][0]["AUTHENTICATION"]["PASSWORD"]))))
         
         self.protocol.dataReceived("HTTP/1.0 200 OK\r\n\r\n")
 
 class SOCKS5TunnelIPv4TestCase(unittest.TestCase):
     def setUp(self):
-        self.configuration = {
-            "PROXY_SERVER": {
-                "TYPE": "SOCKS5",
-                "ADDRESS": "127.0.0.1",
-                "PORT": 1080,
-                "AUTHENTICATION": {
-                    "USERNAME": "",
-                    "PASSWORD": ""
+        self.configuration = \
+        {
+            "PROXY_SERVERS": 
+            [
+                {
+                    "TYPE": "SOCKS5",
+                    "ADDRESS": "127.0.0.1",
+                    "PORT": 1080,
+                    "AUTHENTICATION": 
+                    {
+                        "USERNAME": "",
+                        "PASSWORD": ""
+                    }
                 }
-            }
+            ]
         }
         self.remoteAddress = "127.0.0.1"
         self.remotePort = 80
         
-        self.protocolFactory = twunnel.SOCKS5TunnelOutputProtocolFactory(self.configuration, self.remoteAddress, self.remotePort, TestTunnelProtocol())
+        self.protocolFactory = twunnel.SOCKS5TunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort, TestTunnelProtocol())
         self.protocolFactory.protocol = twunnel.SOCKS5TunnelOutputProtocol
         self.protocol = self.protocolFactory.buildProtocol((self.remoteAddress, self.remotePort))
         self.transport = proto_helpers.StringTransport()
@@ -152,21 +167,26 @@ class SOCKS5TunnelIPv4TestCase(unittest.TestCase):
 
 class SOCKS5TunnelDNTestCase(unittest.TestCase):
     def setUp(self):
-        self.configuration = {
-            "PROXY_SERVER": {
-                "TYPE": "SOCKS5",
-                "ADDRESS": "127.0.0.1",
-                "PORT": 1080,
-                "AUTHENTICATION": {
-                    "USERNAME": "",
-                    "PASSWORD": ""
+        self.configuration = \
+        {
+            "PROXY_SERVERS": 
+            [
+                {
+                    "TYPE": "SOCKS5",
+                    "ADDRESS": "127.0.0.1",
+                    "PORT": 1080,
+                    "AUTHENTICATION": 
+                    {
+                        "USERNAME": "",
+                        "PASSWORD": ""
+                    }
                 }
-            }
+            ]
         }
         self.remoteAddress = "localhost"
         self.remotePort = 80
         
-        self.protocolFactory = twunnel.SOCKS5TunnelOutputProtocolFactory(self.configuration, self.remoteAddress, self.remotePort, TestTunnelProtocol())
+        self.protocolFactory = twunnel.SOCKS5TunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort, TestTunnelProtocol())
         self.protocolFactory.protocol = twunnel.SOCKS5TunnelOutputProtocol
         self.protocol = self.protocolFactory.buildProtocol((self.remoteAddress, self.remotePort))
         self.transport = proto_helpers.StringTransport()

@@ -18,7 +18,8 @@ Usage
 
     protocolFactory = ..
 
-    configuration = {
+    configuration = \
+    {
     }
 
     tunnel = twunnel.Tunnel(configuration)
@@ -31,7 +32,8 @@ Usage
 
     protocolFactory = ..
 
-    configuration = {
+    configuration = \
+    {
     }
 
     contextFactory = ssl.ClientContextFactory()
@@ -45,16 +47,21 @@ Usage
 
     protocolFactory = ..
 
-    configuration = {
-        "PROXY_SERVER": {
-            "TYPE": "HTTP",
-            "ADDRESS": "127.0.0.1",
-            "PORT": 8080,
-            "AUTHENTICATION": {
-                "USERNAME": "1",
-                "PASSWORD": "2"
+    configuration = \
+    {
+        "PROXY_SERVERS": 
+        [
+            {
+                "TYPE": "HTTP",
+                "ADDRESS": "127.0.0.1",
+                "PORT": 8080,
+                "AUTHENTICATION": 
+                {
+                    "USERNAME": "1",
+                    "PASSWORD": "2"
+                }
             }
-        }
+        ]
     }
 
     tunnel = twunnel.Tunnel(configuration)
@@ -66,12 +73,47 @@ Usage
 
     protocolFactory = ..
 
-    configuration = {
-        "PROXY_SERVER": {
-            "TYPE": "SOCKS5",
-            "ADDRESS": "127.0.0.1",
-            "PORT": 1080
-        }
+    configuration = \
+    {
+        "PROXY_SERVERS": 
+        [
+            {
+                "TYPE": "SOCKS5",
+                "ADDRESS": "127.0.0.1",
+                "PORT": 1080
+            }
+        ]
+    }
+
+    tunnel = twunnel.Tunnel(configuration)
+    tunnel.connect("www.google.com", 80, protocolFactory)
+
+.. code:: python
+
+    import twunnel
+
+    protocolFactory = ..
+
+    configuration = \
+    {
+        "PROXY_SERVERS": 
+        [
+            {
+                "TYPE": "HTTP",
+                "ADDRESS": "127.0.0.1",
+                "PORT": 8080,
+                "AUTHENTICATION": 
+                {
+                    "USERNAME": "1",
+                    "PASSWORD": "2"
+                }
+            },
+            {
+                "TYPE": "SOCKS5",
+                "ADDRESS": "127.0.0.1",
+                "PORT": 1080
+            }
+        ]
     }
 
     tunnel = twunnel.Tunnel(configuration)
