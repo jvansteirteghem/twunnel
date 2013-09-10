@@ -1,37 +1,42 @@
-# -*- coding: utf-8 -*-
+# Copyright (c) Jeroen Van Steirteghem
+# See LICENSE
 
-"""
-Copyright (c) 2013 Jeroen Van Steirteghem
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-"""
-
-from twisted.internet import protocol, reactor, tcp
+from zope.interface import implements
+from twisted.internet import base, interfaces, protocol, reactor, tcp
 from twisted.internet.abstract import isIPAddress, isIPv6Address
+from twisted.names import cache, client, hosts, resolve
 import base64
 import struct
-import json
 import socket
 import logging
 
 logger = logging.getLogger(__name__)
 
-def setDefaultConfiguration(configuration):
-    configuration.setdefault("PROXY_SERVERS", [])
+class HostsResolver(hosts.Resolver):
+    lookupAllRecords = hosts.Resolver.lookupAddress
+
+class ClientResolver(client.Resolver):
+    lookupAllRecords = client.Resolver.lookupAddress
+
+def createResolver(configuration):
+    resolverFile = configuration["DNS_RESOLVER"]["HOSTS"]["FILE"]
+    resolverServers = []
     i = 0
-    while i < len(configuration["PROXY_SERVERS"]):
-        configuration["PROXY_SERVERS"][i].setdefault("TYPE", "")
-        configuration["PROXY_SERVERS"][i].setdefault("ADDRESS", "")
-        configuration["PROXY_SERVERS"][i].setdefault("PORT", 0)
-        configuration["PROXY_SERVERS"][i].setdefault("AUTHENTICATION", {})
-        configuration["PROXY_SERVERS"][i]["AUTHENTICATION"].setdefault("USERNAME", "")
-        configuration["PROXY_SERVERS"][i]["AUTHENTICATION"].setdefault("PASSWORD", "")
-        
+    while i < len(configuration["DNS_RESOLVER"]["SERVERS"]):
+        resolverServers.append((configuration["DNS_RESOLVER"]["SERVERS"][i]["ADDRESS"], configuration["DNS_RESOLVER"]["SERVERS"][i]["PORT"]))
         i = i + 1
+    
+    resolvers = []
+    if resolverFile != "":
+        resolvers.append(HostsResolver(file=resolverFile))
+    if len(resolverServers) != 0:
+        resolvers.append(cache.CacheResolver())
+        resolvers.append(ClientResolver(servers=resolverServers))
+    
+    if len(resolvers) != 0:
+        return resolve.ResolverChain(resolvers)
+    else:
+        return base.BlockingResolver()
 
 class TunnelProtocol(protocol.Protocol):
     def __init__(self):
@@ -331,3 +336,269 @@ class SOCKS5TunnelOutputProtocolFactory(protocol.ClientFactory):
     
     def clientConnectionLost(self, connector, reason):
         logger.debug("SOCKS5TunnelOutputProtocolFactory.clientConnectionLost")
+
+class OutputProtocol(protocol.Protocol):
+    implements(interfaces.IPushProducer)
+    
+    def __init__(self):
+        logger.debug("OutputProtocol.__init__")
+        
+        self.inputProtocol = None
+        self.connectionState = 0
+        
+    def connectionMade(self):
+        logger.debug("OutputProtocol.connectionMade")
+        
+        self.connectionState = 1
+        
+        self.inputProtocol.outputProtocol_connectionMade()
+        
+    def connectionLost(self, reason):
+        logger.debug("OutputProtocol.connectionLost")
+        
+        self.connectionState = 2
+        
+        self.inputProtocol.outputProtocol_connectionLost(reason)
+        
+    def dataReceived(self, data):
+        logger.debug("OutputProtocol.dataReceived")
+        
+        self.inputProtocol.outputProtocol_dataReceived(data)
+        
+    def inputProtocol_connectionMade(self):
+        logger.debug("OutputProtocol.inputProtocol_connectionMade")
+        
+        if self.connectionState == 1:
+            self.transport.registerProducer(self.inputProtocol, True)
+        
+    def inputProtocol_connectionLost(self, reason):
+        logger.debug("OutputProtocol.inputProtocol_connectionLost")
+        
+        if self.connectionState == 1:
+            self.transport.unregisterProducer()
+            self.transport.loseConnection()
+        
+    def inputProtocol_dataReceived(self, data):
+        logger.debug("OutputProtocol.inputProtocol_dataReceived")
+        
+        if self.connectionState == 1:
+            self.transport.write(data)
+    
+    def pauseProducing(self):
+        logger.debug("OutputProtocol.pauseProducing")
+        
+        if self.connectionState == 1:
+            self.transport.pauseProducing()
+    
+    def resumeProducing(self):
+        logger.debug("OutputProtocol.resumeProducing")
+        
+        if self.connectionState == 1:
+            self.transport.resumeProducing()
+    
+    def stopProducing(self):
+        logger.debug("OutputProtocol.stopProducing")
+        
+        if self.connectionState == 1:
+            self.transport.stopProducing()
+
+class OutputProtocolFactory(protocol.ClientFactory):
+    protocol = OutputProtocol
+    
+    def __init__(self, inputProtocol):
+        logger.debug("OutputProtocolFactory.__init__")
+        
+        self.inputProtocol = inputProtocol
+        
+    def buildProtocol(self, *args, **kw):
+        outputProtocol = protocol.ClientFactory.buildProtocol(self, *args, **kw)
+        outputProtocol.inputProtocol = self.inputProtocol
+        outputProtocol.inputProtocol.outputProtocol = outputProtocol
+        return outputProtocol
+    
+    def clientConnectionFailed(self, connector, reason):
+        logger.debug("OutputProtocolFactory.clientConnectionFailed")
+        
+        self.inputProtocol.outputProtocol_connectionFailed(reason)
+
+class InputProtocol(protocol.Protocol):
+    implements(interfaces.IPushProducer)
+    
+    def __init__(self):
+        logger.debug("InputProtocol.__init__")
+        
+        self.configuration = None
+        self.outputProtocol = None
+        self.remoteAddressType = 0
+        self.remoteAddress = ""
+        self.remotePort = 0
+        self.connectionState = 0
+        self.data = ""
+        self.dataState = 0
+    
+    def connect(self):
+        logger.debug("InputProtocol.connect")
+        
+        outputProtocolFactory = OutputProtocolFactory(self)
+        
+        tunnel = Tunnel(self.configuration)
+        tunnel.connect(self.remoteAddress, self.remotePort, outputProtocolFactory)
+    
+    def connectionMade(self):
+        logger.debug("InputProtocol.connectionMade")
+        
+        self.connectionState = 1
+    
+    def connectionLost(self, reason):
+        logger.debug("InputProtocol.connectionLost")
+        
+        self.connectionState = 2
+        
+        if self.outputProtocol is not None:
+            self.outputProtocol.inputProtocol_connectionLost(reason)
+    
+    def dataReceived(self, data):
+        logger.debug("InputProtocol.dataReceived")
+        
+        self.data = self.data + data
+        if self.dataState == 0:
+            self.processDataState0()
+            return
+        if self.dataState == 1:
+            self.processDataState1()
+            return
+        if self.dataState == 2:
+            self.processDataState2()
+            return
+    
+    def processDataState0(self):
+        logger.debug("InputProtocol.processDataState0")
+        
+        # no authentication
+        self.transport.write(struct.pack('!BB', 0x05, 0x00))
+        
+        self.data = ""
+        self.dataState = 1
+    
+    def processDataState1(self):
+        logger.debug("InputProtocol.processDataState1")
+        
+        v, c, r, self.remoteAddressType = struct.unpack('!BBBB', self.data[:4])
+        
+        # IPv4
+        if self.remoteAddressType == 0x01:
+            remoteAddress, self.remotePort = struct.unpack('!IH', self.data[4:10])
+            self.remoteAddress = socket.inet_ntoa(struct.pack('!I', remoteAddress))
+            self.data = self.data[10:]
+        else:
+            # DN
+            if self.remoteAddressType == 0x03:
+                remoteAddressLength = ord(self.data[4])
+                self.remoteAddress, self.remotePort = struct.unpack('!%dsH' % remoteAddressLength, self.data[5:])
+                self.data = self.data[7 + remoteAddressLength:]
+            # IPv6
+            else:
+                response = struct.pack('!BBBBIH', 0x05, 0x08, 0x00, 0x01, 0, 0)
+                self.transport.write(response)
+                self.transport.loseConnection()
+                return
+        
+        logger.debug("InputProtocol.remoteAddressType: " + str(self.remoteAddressType))
+        logger.debug("InputProtocol.remoteAddress: " + self.remoteAddress)
+        logger.debug("InputProtocol.remotePort: " + str(self.remotePort))
+        
+        # connect
+        if c == 0x01:
+            self.connect()
+        else:
+            response = struct.pack('!BBBBIH', 0x05, 0x07, 0x00, 0x01, 0, 0)
+            self.transport.write(response)
+            self.transport.loseConnection()
+            return
+        
+    def processDataState2(self):
+        logger.debug("InputProtocol.processDataState2")
+        
+        self.outputProtocol.inputProtocol_dataReceived(self.data)
+        
+        self.data = ""
+        
+    def outputProtocol_connectionMade(self):
+        logger.debug("InputProtocol.outputProtocol_connectionMade")
+        
+        if self.connectionState == 1:
+            self.transport.registerProducer(self.outputProtocol, True)
+            
+            response = struct.pack('!BBBBIH', 0x05, 0x00, 0x00, 0x01, 0, 0)
+            self.transport.write(response)
+            
+            self.outputProtocol.inputProtocol_connectionMade()
+            
+            self.data = ""
+            self.dataState = 2
+        else:
+            if self.connectionState == 2:
+                self.outputProtocol.inputProtocol_connectionLost(None)
+        
+    def outputProtocol_connectionFailed(self, reason):
+        logger.debug("InputProtocol.outputProtocol_connectionFailed")
+        
+        if self.connectionState == 1:
+            response = struct.pack('!BBBBIH', 0x05, 0x05, 0x00, 0x01, 0, 0)
+            self.transport.write(response)
+            self.transport.loseConnection()
+        
+    def outputProtocol_connectionLost(self, reason):
+        logger.debug("InputProtocol.outputProtocol_connectionLost")
+        
+        if self.connectionState == 1:
+            self.transport.unregisterProducer()
+            self.transport.loseConnection()
+        else:
+            if self.connectionState == 2:
+                self.outputProtocol.inputProtocol_connectionLost(None)
+        
+    def outputProtocol_dataReceived(self, data):
+        logger.debug("InputProtocol.outputProtocol_dataReceived")
+        
+        if self.connectionState == 1:
+            self.transport.write(data)
+        else:
+            if self.connectionState == 2:
+                self.outputProtocol.inputProtocol_connectionLost(None)
+    
+    def pauseProducing(self):
+        logger.debug("InputProtocol.pauseProducing")
+        
+        if self.connectionState == 1:
+            self.transport.pauseProducing()
+    
+    def resumeProducing(self):
+        logger.debug("InputProtocol.resumeProducing")
+        
+        if self.connectionState == 1:
+            self.transport.resumeProducing()
+    
+    def stopProducing(self):
+        logger.debug("InputProtocol.stopProducing")
+        
+        if self.connectionState == 1:
+            self.transport.stopProducing()
+        
+class InputProtocolFactory(protocol.ClientFactory):
+    protocol = InputProtocol
+    
+    def __init__(self, configuration):
+        logger.debug("InputProtocolFactory.__init__")
+        
+        self.configuration = configuration
+    
+    def buildProtocol(self, *args, **kw):
+        inputProtocol = protocol.ClientFactory.buildProtocol(self, *args, **kw)
+        inputProtocol.configuration = self.configuration
+        return inputProtocol
+
+def createPort(configuration):
+    factory = InputProtocolFactory(configuration)
+    
+    return tcp.Port(configuration["LOCAL_PROXY_SERVER"]["PORT"], factory, 50, configuration["LOCAL_PROXY_SERVER"]["ADDRESS"], reactor)

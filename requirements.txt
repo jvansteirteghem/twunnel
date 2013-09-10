@@ -1,3 +1,6 @@
 nose
 pyopenssl
+pycrypto
+pyasn1
 twisted
+autobahn

@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
-from test import twunnel
+import sys
+import os
+sys.path.insert(0, os.path.abspath(".."))
 
 from twisted.internet import protocol
 from twisted.trial import unittest
@@ -8,6 +10,7 @@ from twisted.test import proto_helpers
 import base64
 import struct
 import socket
+from twunnel import local
 
 class TestTunnelProtocol(protocol.Protocol):
     def __init__(self):
@@ -46,8 +49,8 @@ class HTTPTunnelTestCase(unittest.TestCase):
         self.remoteAddress = "127.0.0.1"
         self.remotePort = 80
         
-        self.protocolFactory = twunnel.HTTPTunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort, TestTunnelProtocol())
-        self.protocolFactory.protocol = twunnel.HTTPTunnelOutputProtocol
+        self.protocolFactory = local.HTTPTunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort, TestTunnelProtocol())
+        self.protocolFactory.protocol = local.HTTPTunnelOutputProtocol
         self.protocol = self.protocolFactory.buildProtocol((self.remoteAddress, self.remotePort))
         self.transport = proto_helpers.StringTransport()
         self.protocol.makeConnection(self.transport)
@@ -84,8 +87,8 @@ class HTTPTunnelBasicAuthenticationTestCase(unittest.TestCase):
         self.remoteAddress = "127.0.0.1"
         self.remotePort = 80
         
-        self.protocolFactory = twunnel.HTTPTunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort, TestTunnelProtocol())
-        self.protocolFactory.protocol = twunnel.HTTPTunnelOutputProtocol
+        self.protocolFactory = local.HTTPTunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort, TestTunnelProtocol())
+        self.protocolFactory.protocol = local.HTTPTunnelOutputProtocol
         self.protocol = self.protocolFactory.buildProtocol((self.remoteAddress, self.remotePort))
         self.transport = proto_helpers.StringTransport()
         self.protocol.makeConnection(self.transport)
@@ -122,8 +125,8 @@ class SOCKS5TunnelIPv4TestCase(unittest.TestCase):
         self.remoteAddress = "127.0.0.1"
         self.remotePort = 80
         
-        self.protocolFactory = twunnel.SOCKS5TunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort, TestTunnelProtocol())
-        self.protocolFactory.protocol = twunnel.SOCKS5TunnelOutputProtocol
+        self.protocolFactory = local.SOCKS5TunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort, TestTunnelProtocol())
+        self.protocolFactory.protocol = local.SOCKS5TunnelOutputProtocol
         self.protocol = self.protocolFactory.buildProtocol((self.remoteAddress, self.remotePort))
         self.transport = proto_helpers.StringTransport()
         self.protocol.makeConnection(self.transport)
@@ -186,8 +189,8 @@ class SOCKS5TunnelDNTestCase(unittest.TestCase):
         self.remoteAddress = "localhost"
         self.remotePort = 80
         
-        self.protocolFactory = twunnel.SOCKS5TunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort, TestTunnelProtocol())
-        self.protocolFactory.protocol = twunnel.SOCKS5TunnelOutputProtocol
+        self.protocolFactory = local.SOCKS5TunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort, TestTunnelProtocol())
+        self.protocolFactory.protocol = local.SOCKS5TunnelOutputProtocol
         self.protocol = self.protocolFactory.buildProtocol((self.remoteAddress, self.remotePort))
         self.transport = proto_helpers.StringTransport()
         self.protocol.makeConnection(self.transport)

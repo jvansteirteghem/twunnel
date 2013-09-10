@@ -9,9 +9,6 @@ try:
 except ImportError:
     from distutils.core import setup
 
-import twunnel
-
-
 if sys.argv[-1] == 'publish':
     os.system('python setup.py sdist upload')
     sys.exit()
@@ -28,29 +25,35 @@ package_data = {
 }
 
 requires = [
+    'nose', 
+    'pyopenssl', 
+    'pycrypto', 
+    'pyasn1', 
+    'twisted', 
+    'autobahn'
 ]
 
 classifiers = [
-        'Development Status :: 4 - Beta',
-        'Environment :: Web Environment',
-        'Framework :: Twisted',
-        'Intended Audience :: Developers',
-        'License :: OSI Approved :: MIT License',
-        'Operating System :: OS Independent',
-        'Programming Language :: Python',
-        'Topic :: Internet',
-        'Topic :: Software Development :: Libraries :: Python Modules',
+    'Development Status :: 4 - Beta',
+    'Environment :: Web Environment',
+    'Framework :: Twisted',
+    'Intended Audience :: Developers',
+    'License :: OSI Approved :: MIT License',
+    'Operating System :: OS Independent',
+    'Programming Language :: Python',
+    'Topic :: Internet',
+    'Topic :: Software Development :: Libraries :: Python Modules',
 ]
 
 setup(
     name='twunnel',
-    version=twunnel.__version__,
+    version='0.2.0',
     description='A HTTP/SOCKS5 tunnel for Twisted.',
     long_description=readme,
     packages=packages,
     package_data=package_data,
     install_requires=requires,
-    author=twunnel.__author__,
+    author='Jeroen Van Steirteghem',
     author_email='jeroen.vansteirteghem@gmail.com',
     url='https://github.com/jvansteirteghem/twunnel',
     license='MIT',
