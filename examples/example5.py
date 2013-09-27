@@ -12,8 +12,10 @@ logging.basicConfig(level=logging.DEBUG)
 def install_DNS_RESOLVER():
     configuration = \
     {
-        "DNS_RESOLVER": {
-            "HOSTS": {
+        "DNS_RESOLVER":
+        {
+            "HOSTS":
+            {
                 "FILE": "example5/H.txt"
             },
             "SERVERS":
