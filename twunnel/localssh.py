@@ -10,8 +10,6 @@ from twunnel import local
 
 logger = logging.getLogger(__name__)
 
-sshConnections = []
-
 class SSHChannel(channel.SSHChannel):
     implements(interfaces.IPushProducer)
     name = "direct-tcpip"
@@ -113,29 +111,30 @@ class SSHClientTransport(transport.SSHClientTransport):
     def verifyHostKey(self, hostKey, fingerprint):
         logger.debug("SSHClientTransport.verifyHostKey")
         logger.debug("SSHClientTransport.verifyHostKey: fingerprint1=" + fingerprint)
-        logger.debug("SSHClientTransport.verifyHostKey: fingerprint2=" + self.configuration["REMOTE_PROXY_SERVERS"][self.i]["KEY"]["AUTHENTICATION"]["FINGERPRINT"])
+        logger.debug("SSHClientTransport.verifyHostKey: fingerprint2=" + self.configuration["REMOTE_PROXY_SERVERS"][self.i]["KEY"]["FINGERPRINT"])
         
-        if self.configuration["REMOTE_PROXY_SERVERS"][self.i]["KEY"]["AUTHENTICATION"]["FINGERPRINT"] != "":
-            if self.configuration["REMOTE_PROXY_SERVERS"][self.i]["KEY"]["AUTHENTICATION"]["FINGERPRINT"] != fingerprint:
+        if self.configuration["REMOTE_PROXY_SERVERS"][self.i]["KEY"]["FINGERPRINT"] != "":
+            if self.configuration["REMOTE_PROXY_SERVERS"][self.i]["KEY"]["FINGERPRINT"] != fingerprint:
                 logger.debug("SSHClientTransport.verifyHostKey: fingerprint1!=fingerprint2")
                 
                 return defer.fail(0)
         
-        return defer.succeed(1) 
+        return defer.succeed(1)
 
     def connectionSecure(self):
         logger.debug("SSHClientTransport.connectionSecure")
         
         self.requestService(SSHUserAuthClient(self.configuration, self.i))
-                
+
 class SSHClientTransportFactory(protocol.ReconnectingClientFactory):
     protocol = SSHClientTransport
     
-    def __init__(self):
+    def __init__(self, configuration, i, output):
         logger.debug("SSHClientTransportFactory.__init__")
         
-        self.configuration = None
-        self.i = 0
+        self.configuration = configuration
+        self.i = i
+        self.output = output
         self.connectors = []
         
     def buildProtocol(self, address):
@@ -199,29 +198,29 @@ class SSHUserAuthClient(userauth.SSHUserAuthClient):
         self.i = i
         self.j = -1
         
-        userauth.SSHUserAuthClient.__init__(self, str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["AUTHENTICATION"]["USERNAME"]), SSHConnection())
+        userauth.SSHUserAuthClient.__init__(self, str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ACCOUNT"]["NAME"]), SSHConnection())
         
     def getPassword(self):
         logger.debug("SSHUserAuthClient.getPassword")
         
-        return defer.succeed(str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["AUTHENTICATION"]["PASSWORD"]))
+        return defer.succeed(str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ACCOUNT"]["PASSWORD"]))
         
     def getPublicKey(self):
         logger.debug("SSHUserAuthClient.getPublicKey")
         
-        if self.configuration["REMOTE_PROXY_SERVERS"][self.i]["AUTHENTICATION"]["PASSWORD"] != "":
+        if self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ACCOUNT"]["PASSWORD"] != "":
             return None
         
         self.j = self.j + 1
-        if self.j == len(self.configuration["LOCAL_PROXY_SERVER"]["KEYS"]):
+        if self.j == len(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ACCOUNT"]["KEYS"]):
             return None
         
-        return keys.Key.fromFile(self.configuration["LOCAL_PROXY_SERVER"]["KEYS"][self.j]["PUBLIC"]["FILE"], passphrase=str(self.configuration["LOCAL_PROXY_SERVER"]["KEYS"][self.j]["PUBLIC"]["PASSPHRASE"])).blob()
+        return keys.Key.fromFile(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ACCOUNT"]["KEYS"][self.j]["PUBLIC"]["FILE"], passphrase=str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ACCOUNT"]["KEYS"][self.j]["PUBLIC"]["PASSPHRASE"])).blob()
 
     def getPrivateKey(self):
         logger.debug("SSHUserAuthClient.getPrivateKey")
         
-        return defer.succeed(keys.Key.fromFile(self.configuration["LOCAL_PROXY_SERVER"]["KEYS"][self.j]["PRIVATE"]["FILE"], passphrase=str(self.configuration["LOCAL_PROXY_SERVER"]["KEYS"][self.j]["PRIVATE"]["PASSPHRASE"])).keyObject)
+        return defer.succeed(keys.Key.fromFile(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ACCOUNT"]["KEYS"][self.j]["PRIVATE"]["FILE"], passphrase=str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ACCOUNT"]["KEYS"][self.j]["PRIVATE"]["PASSPHRASE"])).keyObject)
 
 class SSHConnection(connection.SSHConnection):
     def serviceStarted(self):
@@ -229,88 +228,73 @@ class SSHConnection(connection.SSHConnection):
         
         connection.SSHConnection.serviceStarted(self)
         
-        sshConnections.append(self)
+        self.transport.factory.output.connections.append(self)
         
-        logger.debug("SSHConnection.serviceStarted: sshConnections=" + str(len(sshConnections)))
+        logger.debug("SSHConnection.serviceStarted: connections=" + str(len(self.transport.factory.output.connections)))
         
     def serviceStopped(self):
         logger.debug("SSHConnection.serviceStopped")
         
         connection.SSHConnection.serviceStopped(self)
         
-        sshConnections.remove(self)
+        self.transport.factory.output.connections.remove(self)
         
-        logger.debug("SSHConnection.serviceStopped: sshConnections=" + str(len(sshConnections)))
+        logger.debug("SSHConnection.serviceStopped: connections=" + str(len(self.transport.factory.output.connections)))
 
-class SSHInputProtocol(local.InputProtocol):
-    def __init__(self):
-        logger.debug("SSHInputProtocol.__init__")
-        
-        local.InputProtocol.__init__(self)
-        
-        self.i = 0
-    
-    def connect(self):
-        logger.debug("SSHInputProtocol.connect")
-        
-        if len(sshConnections) == 0:
-            self.transport.loseConnection()
-            return
-        
-        self.i = random.randrange(0, len(sshConnections))
-        
-        sshConnection = sshConnections[self.i]
-        self.outputProtocol = SSHChannel(conn = sshConnection)
-        self.outputProtocol.inputProtocol = self
-        localAddress = self.transport.getHost()
-        data = forwarding.packOpen_direct_tcpip((self.remoteAddress, self.remotePort), (localAddress.host, localAddress.port))
-        sshConnection.openChannel(self.outputProtocol, data)
-
-class SSHInputProtocolFactory(local.InputProtocolFactory):
-    protocol = SSHInputProtocol
-    
+class SSHOutput(object):
     def __init__(self, configuration):
-        logger.debug("SSHInputProtocolFactory.__init__")
+        logger.debug("SSHOutput.__init__")
         
-        local.InputProtocolFactory.__init__(self, configuration)
+        self.configuration = configuration
+        self.i = 0
         
-        self.sshClientTransportFactories = []
+        self.connections = []
+        self.factories = []
         
         i = 0
         while i < len(self.configuration["REMOTE_PROXY_SERVERS"]):
-            sshClientTransportFactory = SSHClientTransportFactory()
-            sshClientTransportFactory.configuration = self.configuration
-            sshClientTransportFactory.i = i
+            factory = SSHClientTransportFactory(self.configuration, i, self)
             
-            self.sshClientTransportFactories.append(sshClientTransportFactory)
+            self.factories.append(factory)
             
             i = i + 1
+    
+    def connect(self, remoteAddress, remotePort, inputProtocol):
+        logger.debug("SSHOutput.connect")
         
-    def startFactory(self):
-        logger.debug("SSHInputProtocolFactory.startFactory")
+        if len(self.connections) == 0:
+            inputProtocol.outputProtocol_connectionLost(None)
+            return
         
-        local.InputProtocolFactory.startFactory(self)
+        self.i = random.randrange(0, len(self.connections))
+        
+        connection = self.connections[self.i]
+        inputProtocol.outputProtocol = SSHChannel(conn = connection)
+        inputProtocol.outputProtocol.inputProtocol = inputProtocol
+        data = forwarding.packOpen_direct_tcpip((remoteAddress, remotePort), (self.configuration["LOCAL_PROXY_SERVER"]["ADDRESS"], self.configuration["LOCAL_PROXY_SERVER"]["PORT"]))
+        connection.openChannel(inputProtocol.outputProtocol, data)
+        
+    def startOutput(self):
+        logger.debug("SSHOutput.startOutput")
         
         i = 0
-        while i < len(self.sshClientTransportFactories):
-            sshClientTransportFactory = self.sshClientTransportFactories[i]
-            sshClientTransportFactory.connect()
+        while i < len(self.factories):
+            factory = self.factories[i]
+            factory.connect()
             
             i = i + 1
-        
-    def stopFactory(self):
-        logger.debug("SSHInputProtocolFactory.stopFactory")
-        
-        local.InputProtocolFactory.stopFactory(self)
+    
+    def stopOutput(self):
+        logger.debug("SSHOutput.stopOutput")
         
         i = 0
-        while i < len(self.sshClientTransportFactories):
-            sshClientTransportFactory = self.sshClientTransportFactories[i]
-            sshClientTransportFactory.disconnect()
+        while i < len(self.factories):
+            factory = self.factories[i]
+            factory.disconnect()
             
             i = i + 1
 
 def createPort(configuration):
-    factory = SSHInputProtocolFactory(configuration)
+    output = SSHOutput(configuration)
     
-    return tcp.Port(configuration["LOCAL_PROXY_SERVER"]["PORT"], factory, 50, configuration["LOCAL_PROXY_SERVER"]["ADDRESS"], reactor)
+    return local.createPort(configuration, output)

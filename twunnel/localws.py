@@ -18,6 +18,10 @@ class WSOutputProtocol(autobahn.websocket.WebSocketClientProtocol):
     def __init__(self):
         logger.debug("WSOutputProtocol.__init__")
         
+        self.configuration = None
+        self.i = 0
+        self.remoteAddress = ""
+        self.remotePort = 0
         self.inputProtocol = None
         self.connectionState = 0
         self.message = ""
@@ -30,11 +34,11 @@ class WSOutputProtocol(autobahn.websocket.WebSocketClientProtocol):
         
         request = {}
         request["REMOTE_PROXY_SERVER"] = {}
-        request["REMOTE_PROXY_SERVER"]["AUTHENTICATION"] = {}
-        request["REMOTE_PROXY_SERVER"]["AUTHENTICATION"]["USERNAME"] = str(self.inputProtocol.configuration["REMOTE_PROXY_SERVERS"][self.inputProtocol.i]["AUTHENTICATION"]["USERNAME"])
-        request["REMOTE_PROXY_SERVER"]["AUTHENTICATION"]["PASSWORD"] = str(self.inputProtocol.configuration["REMOTE_PROXY_SERVERS"][self.inputProtocol.i]["AUTHENTICATION"]["PASSWORD"])
-        request["REMOTE_ADDRESS"] = str(self.inputProtocol.remoteAddress)
-        request["REMOTE_PORT"] = self.inputProtocol.remotePort
+        request["REMOTE_PROXY_SERVER"]["ACCOUNT"] = {}
+        request["REMOTE_PROXY_SERVER"]["ACCOUNT"]["NAME"] = str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ACCOUNT"]["NAME"])
+        request["REMOTE_PROXY_SERVER"]["ACCOUNT"]["PASSWORD"] = str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ACCOUNT"]["PASSWORD"])
+        request["REMOTE_ADDRESS"] = str(self.remoteAddress)
+        request["REMOTE_PORT"] = self.remotePort
         
         encoder = json.JSONEncoder()
         message = encoder.encode(request)
@@ -124,15 +128,23 @@ class WSOutputProtocol(autobahn.websocket.WebSocketClientProtocol):
 class WSOutputProtocolFactory(autobahn.websocket.WebSocketClientFactory):
     protocol = WSOutputProtocol
     
-    def __init__(self, inputProtocol, *args, **kwargs):
+    def __init__(self, configuration, i, remoteAddress, remotePort, inputProtocol, *args, **kwargs):
         logger.debug("WSOutputProtocolFactory.__init__")
         
         autobahn.websocket.WebSocketClientFactory.__init__(self, *args, **kwargs)
         
+        self.configuration = configuration
+        self.i = i
+        self.remoteAddress = remoteAddress
+        self.remotePort = remotePort
         self.inputProtocol = inputProtocol
         
     def buildProtocol(self, *args, **kwargs):
         outputProtocol = autobahn.websocket.WebSocketClientFactory.buildProtocol(self, *args, **kwargs)
+        outputProtocol.configuration = self.configuration
+        outputProtocol.i = self.i
+        outputProtocol.remoteAddress = self.remoteAddress
+        outputProtocol.remotePort = self.remotePort
         outputProtocol.inputProtocol = self.inputProtocol
         outputProtocol.inputProtocol.outputProtocol = outputProtocol
         return outputProtocol
@@ -169,39 +181,41 @@ class ClientContextFactory(ssl.ClientContextFactory):
         
         return certificateOk
 
-class WSInputProtocol(local.InputProtocol):
-    def __init__(self):
-        logger.debug("WSInputProtocol.__init__")
+class WSOutput(object):
+    def __init__(self, configuration):
+        logger.debug("WSOutput.__init__")
         
-        local.InputProtocol.__init__(self)
-        
+        self.configuration = configuration
         self.i = 0
         
-    def connect(self):
-        logger.debug("WSInputProtocol.connect")
+    def connect(self, remoteAddress, remotePort, inputProtocol):
+        logger.debug("WSOutput.connect")
         
         self.i = random.randrange(0, len(self.configuration["REMOTE_PROXY_SERVERS"]))
         
         if self.configuration["REMOTE_PROXY_SERVERS"][self.i]["TYPE"] == "HTTP":
-            factory = WSOutputProtocolFactory(self, "ws://" + str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"]) + ":" + str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"]))
+            factory = WSOutputProtocolFactory(self.configuration, self.i, remoteAddress, remotePort, inputProtocol, "ws://" + str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"]) + ":" + str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"]))
             
             tunnel = local.Tunnel(self.configuration)
             tunnel.connect(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"], self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"], factory)
         else:
-            factory = WSOutputProtocolFactory(self, "wss://" + str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"]) + ":" + str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"]))
+            factory = WSOutputProtocolFactory(self.configuration, self.i, remoteAddress, remotePort, inputProtocol, "wss://" + str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"]) + ":" + str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"]))
             
-            if self.configuration["REMOTE_PROXY_SERVERS"][self.i]["CERTIFICATE"]["AUTHENTICATION"]["FILE"] != "":
-                contextFactory = ClientContextFactory(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["CERTIFICATE"]["AUTHENTICATION"]["FILE"])
+            if self.configuration["REMOTE_PROXY_SERVERS"][self.i]["CERTIFICATE"]["AUTHORITY"]["FILE"] != "":
+                contextFactory = ClientContextFactory(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["CERTIFICATE"]["AUTHORITY"]["FILE"])
             else:
                 contextFactory = ssl.ClientContextFactory()
             
             tunnel = local.Tunnel(self.configuration)
             tunnel.connect(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"], self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"], factory, contextFactory)
-
-class WSInputProtocolFactory(local.InputProtocolFactory):
-    protocol = WSInputProtocol
+    
+    def startOutput(self):
+        logger.debug("WSOutput.startOutput")
+    
+    def stopOutput(self):
+        logger.debug("WSOutput.stopOutput")
 
 def createPort(configuration):
-    factory = WSInputProtocolFactory(configuration)
+    output = WSOutput(configuration)
     
-    return tcp.Port(configuration["LOCAL_PROXY_SERVER"]["PORT"], factory, 50, configuration["LOCAL_PROXY_SERVER"]["ADDRESS"], reactor)
+    return local.createPort(configuration, output)

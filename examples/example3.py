@@ -21,39 +21,36 @@ def start_LOCAL_PROXY_SERVER():
         "LOCAL_PROXY_SERVER":
         {
             "ADDRESS": "127.0.0.1",
-            "PORT": 1080,
-            "KEYS": 
-            [
-                {
-                    "PUBLIC": 
-                    {
-                        "FILE": "example3/KP.pem",
-                        "PASSPHRASE": ""
-                    },
-                    "PRIVATE": 
-                    {
-                        "FILE": "example3/KP.pem",
-                        "PASSPHRASE": ""
-                    }
-                }
-            ]
+            "PORT": 1080
         },
         "REMOTE_PROXY_SERVERS":
         [
             {
                 "ADDRESS": "127.0.0.1",
                 "PORT": 8022,
-                "AUTHENTICATION":
+                "KEY":
                 {
-                    "USERNAME": "1",
-                    "PASSWORD": "2"
+                    "FINGERPRINT": ""
                 },
-                "KEY": 
+                "ACCOUNT":
                 {
-                    "AUTHENTICATION": 
-                    {
-                        "FINGERPRINT": ""
-                    }
+                    "NAME": "1",
+                    "PASSWORD": "2",
+                    "KEYS":
+                    [
+                        {
+                            "PUBLIC":
+                            {
+                                "FILE": "example3/KP.pem",
+                                "PASSPHRASE": ""
+                            },
+                            "PRIVATE":
+                            {
+                                "FILE": "example3/KP.pem",
+                                "PASSPHRASE": ""
+                            }
+                        }
+                    ]
                 }
             }
         ]
@@ -77,23 +74,6 @@ def start_REMOTE_PROXY_SERVER():
         {
             "ADDRESS": "127.0.0.1",
             "PORT": 8022,
-            "AUTHENTICATION":
-            [
-                {
-                    "USERNAME": "1",
-                    "PASSWORD": "2",
-                    "KEYS": 
-                    [
-                        {
-                            "PUBLIC": 
-                            {
-                                "FILE": "",
-                                "PASSPHRASE": ""
-                            }
-                        }
-                    ]
-                }
-            ],
             "KEY":
             {
                 "PUBLIC":
@@ -106,7 +86,24 @@ def start_REMOTE_PROXY_SERVER():
                     "FILE": "example3/KP.pem",
                     "PASSPHRASE": ""
                 }
-            }
+            },
+            "ACCOUNTS":
+            [
+                {
+                    "NAME": "1",
+                    "PASSWORD": "2",
+                    "KEYS":
+                    [
+                        {
+                            "PUBLIC":
+                            {
+                                "FILE": "",
+                                "PASSPHRASE": ""
+                            }
+                        }
+                    ]
+                }
+            ]
         }
     }
     
@@ -125,15 +122,15 @@ def connect(port):
     
     configuration = \
     {
-        "PROXY_SERVERS": 
+        "PROXY_SERVERS":
         [
             {
                 "TYPE": "SOCKS5",
                 "ADDRESS": "127.0.0.1",
                 "PORT": 1080,
-                "AUTHENTICATION": 
+                "ACCOUNT":
                 {
-                    "USERNAME": "",
+                    "NAME": "",
                     "PASSWORD": ""
                 }
             }

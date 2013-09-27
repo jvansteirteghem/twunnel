@@ -29,17 +29,17 @@ def start_LOCAL_PROXY_SERVER():
                 "TYPE": "HTTPS",
                 "ADDRESS": "127.0.0.1",
                 "PORT": 8443,
-                "AUTHENTICATION":
-                {
-                    "USERNAME": "1",
-                    "PASSWORD": "2"
-                },
                 "CERTIFICATE":
                 {
-                    "AUTHENTICATION":
+                    "AUTHORITY":
                     {
                         "FILE": "example4/CA.pem"
                     }
+                },
+                "ACCOUNT":
+                {
+                    "NAME": "1",
+                    "PASSWORD": "2"
                 }
             }
         ]
@@ -64,21 +64,21 @@ def start_REMOTE_PROXY_SERVER():
             "TYPE": "HTTPS",
             "ADDRESS": "127.0.0.1",
             "PORT": 8443,
-            "AUTHENTICATION":
-            [
-                {
-                    "USERNAME": "1",
-                    "PASSWORD": "2"
-                }
-            ],
             "CERTIFICATE":
             {
+                "FILE": "example4/C.pem",
                 "KEY":
                 {
                     "FILE": "example4/CK.pem"
-                },
-                "FILE": "example4/C.pem"
-            }
+                }
+            },
+            "ACCOUNTS":
+            [
+                {
+                    "NAME": "1",
+                    "PASSWORD": "2"
+                }
+            ]
         }
     }
     
@@ -97,15 +97,15 @@ def connect(port):
     
     configuration = \
     {
-        "PROXY_SERVERS": 
+        "PROXY_SERVERS":
         [
             {
                 "TYPE": "SOCKS5",
                 "ADDRESS": "127.0.0.1",
                 "PORT": 1080,
-                "AUTHENTICATION": 
+                "ACCOUNT":
                 {
-                    "USERNAME": "",
+                    "NAME": "",
                     "PASSWORD": ""
                 }
             }

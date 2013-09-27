@@ -168,8 +168,8 @@ class HTTPTunnelOutputProtocol(protocol.Protocol):
         
         request = "CONNECT " + str(self.factory.address) + ":" + str(self.factory.port) + " HTTP/1.0\r\n"
         
-        if self.factory.configuration["PROXY_SERVERS"][self.factory.i]["AUTHENTICATION"]["USERNAME"] != "":
-            request = request + "Proxy-Authorization: Basic " + base64.standard_b64encode(self.factory.configuration["PROXY_SERVERS"][self.factory.i]["AUTHENTICATION"]["USERNAME"] + ":" + self.factory.configuration["PROXY_SERVERS"][self.factory.i]["AUTHENTICATION"]["PASSWORD"]) + "\r\n"
+        if self.factory.configuration["PROXY_SERVERS"][self.factory.i]["ACCOUNT"]["NAME"] != "":
+            request = request + "Proxy-Authorization: Basic " + base64.standard_b64encode(self.factory.configuration["PROXY_SERVERS"][self.factory.i]["ACCOUNT"]["NAME"] + ":" + self.factory.configuration["PROXY_SERVERS"][self.factory.i]["ACCOUNT"]["PASSWORD"]) + "\r\n"
         
         request = request + "\r\n"
         
@@ -421,6 +421,26 @@ class OutputProtocolFactory(protocol.ClientFactory):
         
         self.inputProtocol.outputProtocol_connectionFailed(reason)
 
+class Output(object):
+    def __init__(self, configuration):
+        logger.debug("Output.__init__")
+        
+        self.configuration = configuration
+    
+    def connect(self, remoteAddress, remotePort, inputProtocol):
+        logger.debug("Output.connect")
+        
+        outputProtocolFactory = OutputProtocolFactory(inputProtocol)
+        
+        tunnel = Tunnel(self.configuration)
+        tunnel.connect(remoteAddress, remotePort, outputProtocolFactory)
+        
+    def startOutput(self):
+        logger.debug("Output.startOutput")
+    
+    def stopOutput(self):
+        logger.debug("Output.stopOutput")
+
 class InputProtocol(protocol.Protocol):
     implements(interfaces.IPushProducer)
     
@@ -428,21 +448,13 @@ class InputProtocol(protocol.Protocol):
         logger.debug("InputProtocol.__init__")
         
         self.configuration = None
+        self.output = None
         self.outputProtocol = None
-        self.remoteAddressType = 0
         self.remoteAddress = ""
         self.remotePort = 0
         self.connectionState = 0
         self.data = ""
         self.dataState = 0
-    
-    def connect(self):
-        logger.debug("InputProtocol.connect")
-        
-        outputProtocolFactory = OutputProtocolFactory(self)
-        
-        tunnel = Tunnel(self.configuration)
-        tunnel.connect(self.remoteAddress, self.remotePort, outputProtocolFactory)
     
     def connectionMade(self):
         logger.debug("InputProtocol.connectionMade")
@@ -483,16 +495,16 @@ class InputProtocol(protocol.Protocol):
     def processDataState1(self):
         logger.debug("InputProtocol.processDataState1")
         
-        v, c, r, self.remoteAddressType = struct.unpack('!BBBB', self.data[:4])
+        v, c, r, remoteAddressType = struct.unpack('!BBBB', self.data[:4])
         
         # IPv4
-        if self.remoteAddressType == 0x01:
+        if remoteAddressType == 0x01:
             remoteAddress, self.remotePort = struct.unpack('!IH', self.data[4:10])
             self.remoteAddress = socket.inet_ntoa(struct.pack('!I', remoteAddress))
             self.data = self.data[10:]
         else:
             # DN
-            if self.remoteAddressType == 0x03:
+            if remoteAddressType == 0x03:
                 remoteAddressLength = ord(self.data[4])
                 self.remoteAddress, self.remotePort = struct.unpack('!%dsH' % remoteAddressLength, self.data[5:])
                 self.data = self.data[7 + remoteAddressLength:]
@@ -503,13 +515,12 @@ class InputProtocol(protocol.Protocol):
                 self.transport.loseConnection()
                 return
         
-        logger.debug("InputProtocol.remoteAddressType: " + str(self.remoteAddressType))
         logger.debug("InputProtocol.remoteAddress: " + self.remoteAddress)
         logger.debug("InputProtocol.remotePort: " + str(self.remotePort))
         
         # connect
         if c == 0x01:
-            self.connect()
+            self.output.connect(self.remoteAddress, self.remotePort, self)
         else:
             response = struct.pack('!BBBBIH', 0x05, 0x07, 0x00, 0x01, 0, 0)
             self.transport.write(response)
@@ -588,17 +599,32 @@ class InputProtocol(protocol.Protocol):
 class InputProtocolFactory(protocol.ClientFactory):
     protocol = InputProtocol
     
-    def __init__(self, configuration):
+    def __init__(self, configuration, output):
         logger.debug("InputProtocolFactory.__init__")
         
         self.configuration = configuration
+        self.output = output
     
     def buildProtocol(self, *args, **kw):
         inputProtocol = protocol.ClientFactory.buildProtocol(self, *args, **kw)
         inputProtocol.configuration = self.configuration
+        inputProtocol.output = self.output
         return inputProtocol
+    
+    def startFactory(self):
+        logger.debug("InputProtocolFactory.startFactory")
+        
+        self.output.startOutput()
+    
+    def stopFactory(self):
+        logger.debug("InputProtocolFactory.stopFactory")
+        
+        self.output.stopOutput()
 
-def createPort(configuration):
-    factory = InputProtocolFactory(configuration)
+def createPort(configuration, output=None):
+    if output is None:
+        output = Output(configuration)
+    
+    factory = InputProtocolFactory(configuration, output)
     
     return tcp.Port(configuration["LOCAL_PROXY_SERVER"]["PORT"], factory, 50, configuration["LOCAL_PROXY_SERVER"]["ADDRESS"], reactor)

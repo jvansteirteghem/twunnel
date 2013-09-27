@@ -39,15 +39,15 @@ def connect(port):
     
     configuration = \
     {
-        "PROXY_SERVERS": 
+        "PROXY_SERVERS":
         [
             {
                 "TYPE": "SOCKS5",
                 "ADDRESS": "127.0.0.1",
                 "PORT": 1080,
-                "AUTHENTICATION": 
+                "ACCOUNT":
                 {
-                    "USERNAME": "",
+                    "NAME": "",
                     "PASSWORD": ""
                 }
             }

@@ -23,13 +23,14 @@ class SSHChannel(channel.SSHChannel):
     implements(interfaces.IPushProducer)
     name = "direct-tcpip"
     
-    def __init__(self, remoteAddressPort, *args, **kw):
+    def __init__(self, *args, **kw):
         logger.debug("SSHChannel.__init__")
         
         channel.SSHChannel.__init__(self, *args, **kw)
         
-        self.remoteAddress = remoteAddressPort[0]
-        self.remotePort = remoteAddressPort[1]
+        self.configuration = None
+        self.remoteAddress = ""
+        self.remotePort = 0
         self.outputProtocol = None
         self.connectionState = 0
         self.data = ""
@@ -42,7 +43,7 @@ class SSHChannel(channel.SSHChannel):
         
         outputProtocolFactory = SSHOutputProtocolFactory(self)
         
-        tunnel = local.Tunnel(self.avatar.configuration)
+        tunnel = local.Tunnel(self.configuration)
         tunnel.connect(self.remoteAddress, self.remotePort, outputProtocolFactory)
 
     def openFailed(self, reason):
@@ -157,11 +158,6 @@ class SSHChannel(channel.SSHChannel):
         
         self.outputProtocol.pauseProducing()
 
-def openSSHChannel(remoteWindow, remoteMaxPacket, data, avatar):
-    remoteAdressPort, localAddressPort = forwarding.unpackOpen_direct_tcpip(data)
-    
-    return SSHChannel(remoteAdressPort, remoteWindow=remoteWindow, remoteMaxPacket=remoteMaxPacket, avatar=avatar)
-
 class SSHConchUser(avatar.ConchUser):
     def __init__(self, configuration):
         logger.debug("SSHConchUser.__init__")
@@ -170,7 +166,19 @@ class SSHConchUser(avatar.ConchUser):
         
         self.configuration = configuration
         
-        self.channelLookup["direct-tcpip"] = openSSHChannel
+        self.channelLookup["direct-tcpip"] = self.openSSHChannel
+    
+    def openSSHChannel(self, remoteWindow, remoteMaxPacket, data, avatar):
+        logger.debug("SSHConchUser.openSSHChannel")
+        
+        remoteAddressPort, localAddressPort = forwarding.unpackOpen_direct_tcpip(data)
+        
+        sshChannel = SSHChannel(remoteWindow=remoteWindow, remoteMaxPacket=remoteMaxPacket, avatar=avatar)
+        sshChannel.configuration = self.configuration
+        sshChannel.remoteAddress = remoteAddressPort[0]
+        sshChannel.remotePort = remoteAddressPort[1]
+        
+        return sshChannel
 
 class SSHUsernamePasswordCredentialsChecker(object):
     implements(checkers.ICredentialsChecker)
@@ -186,15 +194,15 @@ class SSHUsernamePasswordCredentialsChecker(object):
         
         authorized = False
         
-        if len(self.configuration["REMOTE_PROXY_SERVER"]["AUTHENTICATION"]) == 0:
+        if len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]) == 0:
             authorized = True
         
         if authorized == False:
             i = 0
-            while i < len(self.configuration["REMOTE_PROXY_SERVER"]["AUTHENTICATION"]):
-                if self.configuration["REMOTE_PROXY_SERVER"]["AUTHENTICATION"][i]["USERNAME"] == credentials.username:
-                    if self.configuration["REMOTE_PROXY_SERVER"]["AUTHENTICATION"][i]["PASSWORD"] != "":
-                        if self.configuration["REMOTE_PROXY_SERVER"]["AUTHENTICATION"][i]["PASSWORD"] == credentials.password:
+            while i < len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]):
+                if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["NAME"] == credentials.username:
+                    if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["PASSWORD"] != "":
+                        if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["PASSWORD"] == credentials.password:
                             authorized = True
                     
                     if authorized == False:
@@ -222,17 +230,17 @@ class SSHPrivateKeyCredentialsChecker(object):
         
         authorized = False
         
-        if len(self.configuration["REMOTE_PROXY_SERVER"]["AUTHENTICATION"]) == 0:
+        if len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]) == 0:
             authorized = True
         
         if authorized == False:
             i = 0
-            while i < len(self.configuration["REMOTE_PROXY_SERVER"]["AUTHENTICATION"]):
-                if self.configuration["REMOTE_PROXY_SERVER"]["AUTHENTICATION"][i]["USERNAME"] == credentials.username:
+            while i < len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]):
+                if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["NAME"] == credentials.username:
                     j = 0
-                    while j < len(self.configuration["REMOTE_PROXY_SERVER"]["AUTHENTICATION"][i]["KEYS"]):
-                        if self.configuration["REMOTE_PROXY_SERVER"]["AUTHENTICATION"][i]["KEYS"][j]["PUBLIC"]["FILE"] != "":
-                            key = keys.Key.fromFile(self.configuration["REMOTE_PROXY_SERVER"]["AUTHENTICATION"][i]["KEYS"][j]["PUBLIC"]["FILE"], passphrase=str(self.configuration["REMOTE_PROXY_SERVER"]["AUTHENTICATION"][i]["KEYS"][j]["PUBLIC"]["PASSPHRASE"]))
+                    while j < len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["KEYS"]):
+                        if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["KEYS"][j]["PUBLIC"]["FILE"] != "":
+                            key = keys.Key.fromFile(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["KEYS"][j]["PUBLIC"]["FILE"], passphrase=str(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["KEYS"][j]["PUBLIC"]["PASSPHRASE"]))
                             
                             if key.blob() == credentials.blob:
                                 if credentials.signature is None:
@@ -271,7 +279,10 @@ class SSHRealm(object):
     def requestAvatar(self, avatarId, mind, *avatarInterfaces):
         logger.debug("SSHRealm.requestAvatar")
         
-        return (interfaces2.IConchUser, SSHConchUser(self.configuration), lambda: None)
+        user = SSHConchUser(self.configuration)
+        userInterface = interfaces2.IConchUser
+        
+        return (userInterface, user, lambda: None)
 
 class SSHInputProtocolFactory(factory.SSHFactory):
     def __init__(self, configuration):

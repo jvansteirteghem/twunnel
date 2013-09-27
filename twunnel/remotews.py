@@ -23,9 +23,9 @@ class WSInputProtocol(autobahn.websocket.WebSocketServerProtocol):
         logger.debug("WSInputProtocol.__init__")
         
         self.configuration = None
-        self.outputProtocol = None
         self.remoteAddress = ""
         self.remotePort = 0
+        self.outputProtocol = None
         self.connectionState = 0
         self.message = ""
         self.messageState = 0
@@ -62,13 +62,13 @@ class WSInputProtocol(autobahn.websocket.WebSocketServerProtocol):
         
         authorized = False;
 
-        if len(self.configuration["REMOTE_PROXY_SERVER"]["AUTHENTICATION"]) == 0:
+        if len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]) == 0:
             authorized = True
         
         if authorized == False:
             i = 0
-            while i < len(self.configuration["REMOTE_PROXY_SERVER"]["AUTHENTICATION"]):
-                if self.configuration["REMOTE_PROXY_SERVER"]["AUTHENTICATION"][i]["USERNAME"] == request["REMOTE_PROXY_SERVER"]["AUTHENTICATION"]["USERNAME"] and self.configuration["REMOTE_PROXY_SERVER"]["AUTHENTICATION"][i]["PASSWORD"] == request["REMOTE_PROXY_SERVER"]["AUTHENTICATION"]["PASSWORD"]:
+            while i < len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]):
+                if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["NAME"] == request["REMOTE_PROXY_SERVER"]["ACCOUNT"]["NAME"] and self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["PASSWORD"] == request["REMOTE_PROXY_SERVER"]["ACCOUNT"]["PASSWORD"]:
                     authorized = True
                     break
                 
@@ -86,7 +86,6 @@ class WSInputProtocol(autobahn.websocket.WebSocketServerProtocol):
         logger.debug("WSInputProtocol.remotePort: " + str(self.remotePort))
         
         outputProtocolFactory = WSOutputProtocolFactory(self)
-        outputProtocolFactory.protocol = WSOutputProtocol
         
         tunnel = local.Tunnel(self.configuration)
         tunnel.connect(self.remoteAddress, self.remotePort, outputProtocolFactory)

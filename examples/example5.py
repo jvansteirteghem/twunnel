@@ -16,7 +16,7 @@ def install_DNS_RESOLVER():
             "HOSTS": {
                 "FILE": "example5/H.txt"
             },
-            "SERVERS": 
+            "SERVERS":
             [
                 {
                     "ADDRESS": "8.8.8.8",
