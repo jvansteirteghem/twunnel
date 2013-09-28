@@ -38,9 +38,9 @@ class HTTPTunnelTestCase(unittest.TestCase):
                     "TYPE": "HTTP",
                     "ADDRESS": "127.0.0.1",
                     "PORT": 8080,
-                    "AUTHENTICATION": 
+                    "ACCOUNT": 
                     {
-                        "USERNAME": "",
+                        "NAME": "",
                         "PASSWORD": ""
                     }
                 }
@@ -76,9 +76,9 @@ class HTTPTunnelBasicAuthenticationTestCase(unittest.TestCase):
                     "TYPE": "HTTP",
                     "ADDRESS": "127.0.0.1",
                     "PORT": 8080,
-                    "AUTHENTICATION": 
+                    "ACCOUNT": 
                     {
-                        "USERNAME": "1",
+                        "NAME": "1",
                         "PASSWORD": "2"
                     }
                 }
@@ -100,7 +100,7 @@ class HTTPTunnelBasicAuthenticationTestCase(unittest.TestCase):
         value = self.transport.value()
         self.transport.clear()
         
-        self.assertEqual(value, "CONNECT %s:%d HTTP/1.0\r\nProxy-Authorization: Basic %s\r\n\r\n" % (self.remoteAddress, self.remotePort, base64.standard_b64encode("%s:%s" % (self.configuration["PROXY_SERVERS"][0]["AUTHENTICATION"]["USERNAME"], self.configuration["PROXY_SERVERS"][0]["AUTHENTICATION"]["PASSWORD"]))))
+        self.assertEqual(value, "CONNECT %s:%d HTTP/1.0\r\nProxy-Authorization: Basic %s\r\n\r\n" % (self.remoteAddress, self.remotePort, base64.standard_b64encode("%s:%s" % (self.configuration["PROXY_SERVERS"][0]["ACCOUNT"]["NAME"], self.configuration["PROXY_SERVERS"][0]["ACCOUNT"]["PASSWORD"]))))
         
         self.protocol.dataReceived("HTTP/1.0 200 OK\r\n\r\n")
 
@@ -114,9 +114,9 @@ class SOCKS5TunnelIPv4TestCase(unittest.TestCase):
                     "TYPE": "SOCKS5",
                     "ADDRESS": "127.0.0.1",
                     "PORT": 1080,
-                    "AUTHENTICATION": 
+                    "ACCOUNT": 
                     {
-                        "USERNAME": "",
+                        "NAME": "",
                         "PASSWORD": ""
                     }
                 }
@@ -178,9 +178,9 @@ class SOCKS5TunnelDNTestCase(unittest.TestCase):
                     "TYPE": "SOCKS5",
                     "ADDRESS": "127.0.0.1",
                     "PORT": 1080,
-                    "AUTHENTICATION": 
+                    "ACCOUNT": 
                     {
-                        "USERNAME": "",
+                        "NAME": "",
                         "PASSWORD": ""
                     }
                 }
