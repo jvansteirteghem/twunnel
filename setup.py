@@ -47,7 +47,7 @@ classifiers = [
 
 setup(
     name='twunnel',
-    version='0.2.0',
+    version='0.3.0',
     description='A HTTP/SOCKS5 tunnel for Twisted.',
     long_description=readme,
     packages=packages,
