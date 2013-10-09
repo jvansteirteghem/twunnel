@@ -20,12 +20,14 @@ def start_LOCAL_PROXY_SERVER():
         "PROXY_SERVERS": [],
         "LOCAL_PROXY_SERVER":
         {
+            "TYPE": "SOCKS5",
             "ADDRESS": "127.0.0.1",
             "PORT": 1080
         },
         "REMOTE_PROXY_SERVERS":
         [
             {
+                "TYPE": "SSH",
                 "ADDRESS": "127.0.0.1",
                 "PORT": 8022,
                 "KEY":
@@ -50,13 +52,14 @@ def start_LOCAL_PROXY_SERVER():
                                 "PASSPHRASE": ""
                             }
                         }
-                    ]
+                    ],
+                    "CONNECTIONS": 2
                 }
             }
         ]
     }
     
-    port_LOCAL_PROXY_SERVER = localssh.createPort(configuration)
+    port_LOCAL_PROXY_SERVER = local.createPort(configuration)
     port_LOCAL_PROXY_SERVER.startListening()
 
 def stop_LOCAL_PROXY_SERVER():
@@ -72,6 +75,7 @@ def start_REMOTE_PROXY_SERVER():
         "PROXY_SERVERS": [],
         "REMOTE_PROXY_SERVER":
         {
+            "TYPE": "SSH",
             "ADDRESS": "127.0.0.1",
             "PORT": 8022,
             "KEY":

@@ -168,6 +168,9 @@ class SSHConchUser(avatar.ConchUser):
         
         self.channelLookup["direct-tcpip"] = self.openSSHChannel
     
+    def logout(self):
+        logger.debug("SSHConchUser.logout")
+    
     def openSSHChannel(self, remoteWindow, remoteMaxPacket, data, avatar):
         logger.debug("SSHConchUser.openSSHChannel")
         
@@ -279,10 +282,10 @@ class SSHRealm(object):
     def requestAvatar(self, avatarId, mind, *avatarInterfaces):
         logger.debug("SSHRealm.requestAvatar")
         
-        user = SSHConchUser(self.configuration)
         userInterface = interfaces2.IConchUser
+        user = SSHConchUser(self.configuration)
         
-        return (userInterface, user, lambda: None)
+        return (userInterface, user, user.logout)
 
 class SSHInputProtocolFactory(factory.SSHFactory):
     def __init__(self, configuration):

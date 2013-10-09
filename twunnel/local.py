@@ -9,6 +9,8 @@ import base64
 import struct
 import socket
 import logging
+import twunnel.localssh
+import twunnel.localws
 
 logger = logging.getLogger(__name__)
 
@@ -48,17 +50,13 @@ class TunnelProtocol(protocol.Protocol):
     def connectionMade(self):
         logger.debug("TunnelProtocol.connectionMade")
         
-        if self.factory.configuration["PROXY_SERVERS"][self.factory.i]["TYPE"] == "HTTP":
-            self.tunnelOutputProtocolFactory = HTTPTunnelOutputProtocolFactory(self.factory.i, self.factory.configuration, self.factory.address, self.factory.port, self)
-            self.tunnelOutputProtocolFactory.protocol = HTTPTunnelOutputProtocol
-        else:
-            if self.factory.configuration["PROXY_SERVERS"][self.factory.i]["TYPE"] == "SOCKS5":
-                self.tunnelOutputProtocolFactory = SOCKS5TunnelOutputProtocolFactory(self.factory.i, self.factory.configuration, self.factory.address, self.factory.port, self)
-                self.tunnelOutputProtocolFactory.protocol = SOCKS5TunnelOutputProtocol
-            else:
-                self.transport.loseConnection()
-                return
+        tunnelOutputProtocolFactoryClass = self.getTunnelOutputProtocolFactoryClass(self.factory.configuration["PROXY_SERVERS"][self.factory.i]["TYPE"])
         
+        if tunnelOutputProtocolFactoryClass is None:
+            self.transport.loseConnection()
+            return
+        
+        self.tunnelOutputProtocolFactory = tunnelOutputProtocolFactoryClass(self.factory.i, self.factory.configuration, self.factory.address, self.factory.port, self)
         self.tunnelOutputProtocol = self.tunnelOutputProtocolFactory.buildProtocol(self.transport.getPeer())
         self.tunnelOutputProtocol.makeConnection(self.transport)
         
@@ -93,8 +91,21 @@ class TunnelProtocol(protocol.Protocol):
         
         if len(data) > 0:
             self.factory.outputProtocol.dataReceived(data)
+    
+    def getTunnelOutputProtocolFactoryClass(self, type):
+        logger.debug("TunnelProtocol.getTunnelOutputProtocolFactoryClass")
+        
+        if type == "HTTP":
+            return HTTPTunnelOutputProtocolFactory
+        else:
+            if type == "SOCKS5":
+                return SOCKS5TunnelOutputProtocolFactory
+            else:
+                return None
 
 class TunnelProtocolFactory(protocol.ClientFactory):
+    protocol = TunnelProtocol
+    
     def __init__(self, i, configuration, address, port, outputProtocolFactory, contextFactory=None, timeout=30, bindAddress=None):
         logger.debug("TunnelProtocolFactory.__init__")
         
@@ -144,13 +155,11 @@ class Tunnel(object):
             i = len(self.configuration["PROXY_SERVERS"])
             
             tunnelProtocolFactory = TunnelProtocolFactory(i - 1, self.configuration, address, port, outputProtocolFactory, contextFactory, timeout, bindAddress)
-            tunnelProtocolFactory.protocol = TunnelProtocol
             
             i = i - 1
             
             while i > 0:
                 tunnelProtocolFactory = TunnelProtocolFactory(i - 1, self.configuration, self.configuration["PROXY_SERVERS"][i]["ADDRESS"], self.configuration["PROXY_SERVERS"][i]["PORT"], tunnelProtocolFactory, contextFactory, timeout, bindAddress)
-                tunnelProtocolFactory.protocol = TunnelProtocol
                 
                 i = i - 1
             
@@ -214,6 +223,8 @@ class HTTPTunnelOutputProtocol(protocol.Protocol):
         self.dataState = 1
 
 class HTTPTunnelOutputProtocolFactory(protocol.ClientFactory):
+    protocol = HTTPTunnelOutputProtocol
+    
     def __init__(self, i, configuration, address, port, tunnelProtocol):
         logger.debug("HTTPTunnelOutputProtocolFactory.__init__")
         
@@ -319,6 +330,8 @@ class SOCKS5TunnelOutputProtocol(protocol.Protocol):
         self.dataState = 2
 
 class SOCKS5TunnelOutputProtocolFactory(protocol.ClientFactory):
+    protocol = SOCKS5TunnelOutputProtocol
+    
     def __init__(self, i, configuration, address, port, tunnelProtocol):
         logger.debug("SOCKS5TunnelOutputProtocolFactory.__init__")
         
@@ -441,14 +454,78 @@ class Output(object):
     def stopOutput(self):
         logger.debug("Output.stopOutput")
 
-class InputProtocol(protocol.Protocol):
+class OutputManager(object):
+    def __init__(self, configuration):
+        logger.debug("OutputManager.__init__")
+        
+        self.configuration = configuration
+        self.i = 0
+        
+        self.outputs = []
+        
+        if len(self.configuration["REMOTE_PROXY_SERVERS"]) == 0:
+            output = Output(self.configuration)
+            self.outputs.append(output)
+        else:
+            i = 0
+            while i < len(self.configuration["REMOTE_PROXY_SERVERS"]):
+                outputClass = self.getOutputClass(self.configuration["REMOTE_PROXY_SERVERS"][i]["TYPE"])
+                
+                if outputClass is not None:
+                    output = outputClass(self.configuration, i)
+                    self.outputs.append(output)
+                
+                i = i + 1
+    
+    def connect(self, remoteAddress, remotePort, inputProtocol):
+        logger.debug("OutputManager.connect")
+        
+        output = self.outputs[self.i]
+        output.connect(remoteAddress, remotePort, inputProtocol)
+        
+        self.i = self.i + 1
+        if self.i == len(self.outputs):
+            self.i = 0
+    
+    def startOutputManager(self):
+        logger.debug("OutputManager.startOutputManager")
+        
+        i = 0
+        while i < len(self.outputs):
+            output = self.outputs[i]
+            output.startOutput()
+            
+            i = i + 1
+    
+    def stopOutputManager(self):
+        logger.debug("OutputManager.stopOutputManager")
+        
+        i = 0
+        while i < len(self.outputs):
+            output = self.outputs[i]
+            output.stopOutput()
+            
+            i = i + 1
+    
+    def getOutputClass(self, type):
+        logger.debug("OutputManager.getOutputClass")
+        
+        if type == "SSH":
+            return twunnel.localssh.SSHOutput
+        else:
+            if type == "WS" or type == "WSS":
+                return twunnel.localws.WSOutput
+            else:
+                return None
+
+class SOCKS5InputProtocol(protocol.Protocol):
     implements(interfaces.IPushProducer)
     
     def __init__(self):
-        logger.debug("InputProtocol.__init__")
+        logger.debug("SOCKS5InputProtocol.__init__")
         
         self.configuration = None
-        self.output = None
+        self.outputManager = None
         self.outputProtocol = None
         self.remoteAddress = ""
         self.remotePort = 0
@@ -457,12 +534,12 @@ class InputProtocol(protocol.Protocol):
         self.dataState = 0
     
     def connectionMade(self):
-        logger.debug("InputProtocol.connectionMade")
+        logger.debug("SOCKS5InputProtocol.connectionMade")
         
         self.connectionState = 1
     
     def connectionLost(self, reason):
-        logger.debug("InputProtocol.connectionLost")
+        logger.debug("SOCKS5InputProtocol.connectionLost")
         
         self.connectionState = 2
         
@@ -470,7 +547,7 @@ class InputProtocol(protocol.Protocol):
             self.outputProtocol.inputProtocol_connectionLost(reason)
     
     def dataReceived(self, data):
-        logger.debug("InputProtocol.dataReceived")
+        logger.debug("SOCKS5InputProtocol.dataReceived")
         
         self.data = self.data + data
         if self.dataState == 0:
@@ -484,7 +561,7 @@ class InputProtocol(protocol.Protocol):
             return
     
     def processDataState0(self):
-        logger.debug("InputProtocol.processDataState0")
+        logger.debug("SOCKS5InputProtocol.processDataState0")
         
         # no authentication
         self.transport.write(struct.pack('!BB', 0x05, 0x00))
@@ -493,7 +570,7 @@ class InputProtocol(protocol.Protocol):
         self.dataState = 1
     
     def processDataState1(self):
-        logger.debug("InputProtocol.processDataState1")
+        logger.debug("SOCKS5InputProtocol.processDataState1")
         
         v, c, r, remoteAddressType = struct.unpack('!BBBB', self.data[:4])
         
@@ -515,12 +592,12 @@ class InputProtocol(protocol.Protocol):
                 self.transport.loseConnection()
                 return
         
-        logger.debug("InputProtocol.remoteAddress: " + self.remoteAddress)
-        logger.debug("InputProtocol.remotePort: " + str(self.remotePort))
+        logger.debug("SOCKS5InputProtocol.remoteAddress: " + self.remoteAddress)
+        logger.debug("SOCKS5InputProtocol.remotePort: " + str(self.remotePort))
         
         # connect
         if c == 0x01:
-            self.output.connect(self.remoteAddress, self.remotePort, self)
+            self.outputManager.connect(self.remoteAddress, self.remotePort, self)
         else:
             response = struct.pack('!BBBBIH', 0x05, 0x07, 0x00, 0x01, 0, 0)
             self.transport.write(response)
@@ -528,14 +605,14 @@ class InputProtocol(protocol.Protocol):
             return
         
     def processDataState2(self):
-        logger.debug("InputProtocol.processDataState2")
+        logger.debug("SOCKS5InputProtocol.processDataState2")
         
         self.outputProtocol.inputProtocol_dataReceived(self.data)
         
         self.data = ""
         
     def outputProtocol_connectionMade(self):
-        logger.debug("InputProtocol.outputProtocol_connectionMade")
+        logger.debug("SOCKS5InputProtocol.outputProtocol_connectionMade")
         
         if self.connectionState == 1:
             self.transport.registerProducer(self.outputProtocol, True)
@@ -552,7 +629,7 @@ class InputProtocol(protocol.Protocol):
                 self.outputProtocol.inputProtocol_connectionLost(None)
         
     def outputProtocol_connectionFailed(self, reason):
-        logger.debug("InputProtocol.outputProtocol_connectionFailed")
+        logger.debug("SOCKS5InputProtocol.outputProtocol_connectionFailed")
         
         if self.connectionState == 1:
             response = struct.pack('!BBBBIH', 0x05, 0x05, 0x00, 0x01, 0, 0)
@@ -560,7 +637,7 @@ class InputProtocol(protocol.Protocol):
             self.transport.loseConnection()
         
     def outputProtocol_connectionLost(self, reason):
-        logger.debug("InputProtocol.outputProtocol_connectionLost")
+        logger.debug("SOCKS5InputProtocol.outputProtocol_connectionLost")
         
         if self.connectionState == 1:
             self.transport.unregisterProducer()
@@ -570,7 +647,7 @@ class InputProtocol(protocol.Protocol):
                 self.outputProtocol.inputProtocol_connectionLost(None)
         
     def outputProtocol_dataReceived(self, data):
-        logger.debug("InputProtocol.outputProtocol_dataReceived")
+        logger.debug("SOCKS5InputProtocol.outputProtocol_dataReceived")
         
         if self.connectionState == 1:
             self.transport.write(data)
@@ -579,52 +656,52 @@ class InputProtocol(protocol.Protocol):
                 self.outputProtocol.inputProtocol_connectionLost(None)
     
     def pauseProducing(self):
-        logger.debug("InputProtocol.pauseProducing")
+        logger.debug("SOCKS5InputProtocol.pauseProducing")
         
         if self.connectionState == 1:
             self.transport.pauseProducing()
     
     def resumeProducing(self):
-        logger.debug("InputProtocol.resumeProducing")
+        logger.debug("SOCKS5InputProtocol.resumeProducing")
         
         if self.connectionState == 1:
             self.transport.resumeProducing()
     
     def stopProducing(self):
-        logger.debug("InputProtocol.stopProducing")
+        logger.debug("SOCKS5InputProtocol.stopProducing")
         
         if self.connectionState == 1:
             self.transport.stopProducing()
         
-class InputProtocolFactory(protocol.ClientFactory):
-    protocol = InputProtocol
+class SOCKS5InputProtocolFactory(protocol.ClientFactory):
+    protocol = SOCKS5InputProtocol
     
-    def __init__(self, configuration, output):
-        logger.debug("InputProtocolFactory.__init__")
+    def __init__(self, configuration, outputManager):
+        logger.debug("SOCKS5InputProtocolFactory.__init__")
         
         self.configuration = configuration
-        self.output = output
+        self.outputManager = outputManager
     
     def buildProtocol(self, *args, **kw):
-        inputProtocol = protocol.ClientFactory.buildProtocol(self, *args, **kw)
-        inputProtocol.configuration = self.configuration
-        inputProtocol.output = self.output
-        return inputProtocol
+        p = protocol.ClientFactory.buildProtocol(self, *args, **kw)
+        p.configuration = self.configuration
+        p.outputManager = self.outputManager
+        return p
     
     def startFactory(self):
-        logger.debug("InputProtocolFactory.startFactory")
+        logger.debug("SOCKS5InputProtocolFactory.startFactory")
         
-        self.output.startOutput()
+        self.outputManager.startOutputManager()
     
     def stopFactory(self):
-        logger.debug("InputProtocolFactory.stopFactory")
+        logger.debug("SOCKS5InputProtocolFactory.stopFactory")
         
-        self.output.stopOutput()
+        self.outputManager.stopOutputManager()
 
-def createPort(configuration, output=None):
-    if output is None:
-        output = Output(configuration)
+def createPort(configuration, outputManager=None):
+    if outputManager is None:
+        outputManager = OutputManager(configuration)
     
-    factory = InputProtocolFactory(configuration, output)
+    factory = SOCKS5InputProtocolFactory(configuration, outputManager)
     
     return tcp.Port(configuration["LOCAL_PROXY_SERVER"]["PORT"], factory, 50, configuration["LOCAL_PROXY_SERVER"]["ADDRESS"], reactor)

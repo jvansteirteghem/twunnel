@@ -184,7 +184,7 @@ class WSInputProtocolFactory(autobahn.websocket.WebSocketServerFactory):
         return inputProtocol
 
 def createPort(configuration):
-    if configuration["REMOTE_PROXY_SERVER"]["TYPE"] == "HTTP":
+    if configuration["REMOTE_PROXY_SERVER"]["TYPE"] == "WS":
         factory = WSInputProtocolFactory(configuration, "ws://" + str(configuration["REMOTE_PROXY_SERVER"]["ADDRESS"]) + ":" + str(configuration["REMOTE_PROXY_SERVER"]["PORT"]))
         
         return tcp.Port(configuration["REMOTE_PROXY_SERVER"]["PORT"], factory, 50, configuration["REMOTE_PROXY_SERVER"]["ADDRESS"], reactor)

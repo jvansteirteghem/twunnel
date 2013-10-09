@@ -4,9 +4,8 @@
 from zope.interface import implements
 from twisted.internet import defer, interfaces, protocol, reactor, tcp
 from twisted.conch.ssh import channel, connection, forwarding, keys, transport, userauth
-import random
 import logging
-from twunnel import local
+import twunnel.local
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +134,6 @@ class SSHClientTransportFactory(protocol.ReconnectingClientFactory):
         self.configuration = configuration
         self.i = i
         self.output = output
-        self.connectors = []
         
     def buildProtocol(self, address):
         logger.debug("SSHClientTransportFactory.buildProtocol")
@@ -151,42 +149,24 @@ class SSHClientTransportFactory(protocol.ReconnectingClientFactory):
     def stopFactory(self):
         logger.debug("SSHClientTransportFactory.stopFactory")
         
-    def connect(self):
-        logger.debug("SSHClientTransportFactory.connect")
-        
-        tunnel = local.Tunnel(self.configuration)
-        tunnel.connect(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"], self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"], self)
-        
-    def disconnect(self):
-        logger.debug("SSHClientTransportFactory.disconnect")
-        
-        self.stopTrying()
-        
-        i = 0
-        while i < len(self.connectors):
-            connector = self.connectors[i]
-            connector.disconnect()
-            
-            i = i + 1
-        
     def startedConnecting(self, connector):
         logger.debug("SSHClientTransportFactory.startedConnecting")
         
-        self.connectors.append(connector)
+        self.output.connectors.append(connector)
         
         protocol.ReconnectingClientFactory.startedConnecting(self, connector)
         
     def clientConnectionFailed(self, connector, reason):
         logger.debug("SSHClientTransportFactory.clientConnectionFailed")
         
-        self.connectors.remove(connector)
+        self.output.connectors.remove(connector)
         
         protocol.ReconnectingClientFactory.clientConnectionFailed(self, connector, reason)
         
     def clientConnectionLost(self, connector, reason):
         logger.debug("SSHClientTransportFactory.clientConnectionLost")
         
-        self.connectors.remove(connector)
+        self.output.connectors.remove(connector)
         
         protocol.ReconnectingClientFactory.clientConnectionLost(self, connector, reason)
         
@@ -242,59 +222,51 @@ class SSHConnection(connection.SSHConnection):
         logger.debug("SSHConnection.serviceStopped: connections=" + str(len(self.transport.factory.output.connections)))
 
 class SSHOutput(object):
-    def __init__(self, configuration):
+    def __init__(self, configuration, i):
         logger.debug("SSHOutput.__init__")
         
         self.configuration = configuration
-        self.i = 0
+        self.i = i
+        self.j = 0
         
         self.connections = []
-        self.factories = []
-        
-        i = 0
-        while i < len(self.configuration["REMOTE_PROXY_SERVERS"]):
-            factory = SSHClientTransportFactory(self.configuration, i, self)
-            
-            self.factories.append(factory)
-            
-            i = i + 1
+        self.connectors = []
+        self.factory = None
     
     def connect(self, remoteAddress, remotePort, inputProtocol):
         logger.debug("SSHOutput.connect")
         
-        if len(self.connections) == 0:
-            inputProtocol.outputProtocol_connectionLost(None)
-            return
+        connection = self.connections[self.j]
         
-        self.i = random.randrange(0, len(self.connections))
+        self.j = self.j + 1
+        if self.j == len(self.connections):
+            self.j = 0
         
-        connection = self.connections[self.i]
         inputProtocol.outputProtocol = SSHChannel(conn = connection)
         inputProtocol.outputProtocol.inputProtocol = inputProtocol
         data = forwarding.packOpen_direct_tcpip((remoteAddress, remotePort), (self.configuration["LOCAL_PROXY_SERVER"]["ADDRESS"], self.configuration["LOCAL_PROXY_SERVER"]["PORT"]))
         connection.openChannel(inputProtocol.outputProtocol, data)
-        
+    
     def startOutput(self):
         logger.debug("SSHOutput.startOutput")
         
+        self.factory = SSHClientTransportFactory(self.configuration, self.i, self)
+        
         i = 0
-        while i < len(self.factories):
-            factory = self.factories[i]
-            factory.connect()
+        while i < self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ACCOUNT"]["CONNECTIONS"]:
+            tunnel = twunnel.local.Tunnel(self.configuration)
+            tunnel.connect(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"], self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"], self.factory)
             
             i = i + 1
     
     def stopOutput(self):
         logger.debug("SSHOutput.stopOutput")
         
+        self.factory.stopTrying()
+        
         i = 0
-        while i < len(self.factories):
-            factory = self.factories[i]
-            factory.disconnect()
+        while i < len(self.connectors):
+            connector = self.connectors[i]
+            connector.disconnect()
             
             i = i + 1
-
-def createPort(configuration):
-    output = SSHOutput(configuration)
-    
-    return local.createPort(configuration, output)

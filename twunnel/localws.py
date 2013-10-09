@@ -3,12 +3,11 @@
 
 from zope.interface import implements
 from twisted.internet import interfaces, reactor, ssl, tcp
-import random
 import OpenSSL
 import json
 import logging
 import autobahn.websocket
-from twunnel import local
+import twunnel.local
 
 logger = logging.getLogger(__name__)
 
@@ -182,21 +181,19 @@ class ClientContextFactory(ssl.ClientContextFactory):
         return certificateOk
 
 class WSOutput(object):
-    def __init__(self, configuration):
+    def __init__(self, configuration, i):
         logger.debug("WSOutput.__init__")
         
         self.configuration = configuration
-        self.i = 0
+        self.i = i
         
     def connect(self, remoteAddress, remotePort, inputProtocol):
         logger.debug("WSOutput.connect")
         
-        self.i = random.randrange(0, len(self.configuration["REMOTE_PROXY_SERVERS"]))
-        
-        if self.configuration["REMOTE_PROXY_SERVERS"][self.i]["TYPE"] == "HTTP":
+        if self.configuration["REMOTE_PROXY_SERVERS"][self.i]["TYPE"] == "WS":
             factory = WSOutputProtocolFactory(self.configuration, self.i, remoteAddress, remotePort, inputProtocol, "ws://" + str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"]) + ":" + str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"]))
             
-            tunnel = local.Tunnel(self.configuration)
+            tunnel = twunnel.local.Tunnel(self.configuration)
             tunnel.connect(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"], self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"], factory)
         else:
             factory = WSOutputProtocolFactory(self.configuration, self.i, remoteAddress, remotePort, inputProtocol, "wss://" + str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"]) + ":" + str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"]))
@@ -206,7 +203,7 @@ class WSOutput(object):
             else:
                 contextFactory = ssl.ClientContextFactory()
             
-            tunnel = local.Tunnel(self.configuration)
+            tunnel = twunnel.local.Tunnel(self.configuration)
             tunnel.connect(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"], self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"], factory, contextFactory)
     
     def startOutput(self):
@@ -214,8 +211,3 @@ class WSOutput(object):
     
     def stopOutput(self):
         logger.debug("WSOutput.stopOutput")
-
-def createPort(configuration):
-    output = WSOutput(configuration)
-    
-    return local.createPort(configuration, output)

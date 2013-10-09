@@ -19,9 +19,11 @@ def start_LOCAL_PROXY_SERVER():
         "PROXY_SERVERS": [],
         "LOCAL_PROXY_SERVER":
         {
+            "TYPE": "SOCKS5",
             "ADDRESS": "127.0.0.1",
             "PORT": 1080
-        }
+        },
+        "REMOTE_PROXY_SERVERS": []
     }
     
     port_LOCAL_PROXY_SERVER = local.createPort(configuration)
