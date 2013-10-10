@@ -180,15 +180,15 @@ class ClientContextFactory(ssl.ClientContextFactory):
         
         return certificateOk
 
-class WSOutput(object):
+class WSOutputProtocolConnection(object):
     def __init__(self, configuration, i):
-        logger.debug("WSOutput.__init__")
+        logger.debug("WSOutputProtocolConnection.__init__")
         
         self.configuration = configuration
         self.i = i
         
     def connect(self, remoteAddress, remotePort, inputProtocol):
-        logger.debug("WSOutput.connect")
+        logger.debug("WSOutputProtocolConnection.connect")
         
         if self.configuration["REMOTE_PROXY_SERVERS"][self.i]["TYPE"] == "WS":
             factory = WSOutputProtocolFactory(self.configuration, self.i, remoteAddress, remotePort, inputProtocol, "ws://" + str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"]) + ":" + str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"]))
@@ -206,8 +206,8 @@ class WSOutput(object):
             tunnel = twunnel.local.Tunnel(self.configuration)
             tunnel.connect(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"], self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"], factory, contextFactory)
     
-    def startOutput(self):
-        logger.debug("WSOutput.startOutput")
+    def startConnection(self):
+        logger.debug("WSOutputProtocolConnection.startConnection")
     
-    def stopOutput(self):
-        logger.debug("WSOutput.stopOutput")
+    def stopConnection(self):
+        logger.debug("WSOutputProtocolConnection.stopConnection")

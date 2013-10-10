@@ -434,89 +434,93 @@ class OutputProtocolFactory(protocol.ClientFactory):
         
         self.inputProtocol.outputProtocol_connectionFailed(reason)
 
-class Output(object):
-    def __init__(self, configuration):
-        logger.debug("Output.__init__")
+class OutputProtocolConnection(object):
+    def __init__(self, configuration, i):
+        logger.debug("OutputProtocolConnection.__init__")
         
         self.configuration = configuration
+        self.i = i
     
     def connect(self, remoteAddress, remotePort, inputProtocol):
-        logger.debug("Output.connect")
+        logger.debug("OutputProtocolConnection.connect")
         
         outputProtocolFactory = OutputProtocolFactory(inputProtocol)
         
         tunnel = Tunnel(self.configuration)
         tunnel.connect(remoteAddress, remotePort, outputProtocolFactory)
         
-    def startOutput(self):
-        logger.debug("Output.startOutput")
+    def startConnection(self):
+        logger.debug("OutputProtocolConnection.startConnection")
     
-    def stopOutput(self):
-        logger.debug("Output.stopOutput")
+    def stopConnection(self):
+        logger.debug("OutputProtocolConnection.stopConnection")
 
-class OutputManager(object):
+class OutputProtocolConnectionManager(object):
     def __init__(self, configuration):
-        logger.debug("OutputManager.__init__")
+        logger.debug("OutputProtocolConnectionManager.__init__")
         
         self.configuration = configuration
         self.i = 0
         
-        self.outputs = []
+        self.outputProtocolConnections = []
         
         if len(self.configuration["REMOTE_PROXY_SERVERS"]) == 0:
-            output = Output(self.configuration)
-            self.outputs.append(output)
+            outputProtocolConnection = OutputProtocolConnection(self.configuration, 0)
+            self.outputProtocolConnections.append(outputProtocolConnection)
         else:
             i = 0
             while i < len(self.configuration["REMOTE_PROXY_SERVERS"]):
-                outputClass = self.getOutputClass(self.configuration["REMOTE_PROXY_SERVERS"][i]["TYPE"])
+                outputProtocolConnectionClass = self.getOutputProtocolConnectionClass(self.configuration["REMOTE_PROXY_SERVERS"][i]["TYPE"])
                 
-                if outputClass is not None:
-                    output = outputClass(self.configuration, i)
-                    self.outputs.append(output)
+                if outputProtocolConnectionClass is not None:
+                    outputProtocolConnection = outputProtocolConnectionClass(self.configuration, i)
+                    self.outputProtocolConnections.append(outputProtocolConnection)
                 
                 i = i + 1
     
     def connect(self, remoteAddress, remotePort, inputProtocol):
-        logger.debug("OutputManager.connect")
+        logger.debug("OutputProtocolConnectionManager.connect")
         
-        output = self.outputs[self.i]
-        output.connect(remoteAddress, remotePort, inputProtocol)
+        outputProtocolConnection = self.outputProtocolConnections[self.i]
+        outputProtocolConnection.connect(remoteAddress, remotePort, inputProtocol)
         
         self.i = self.i + 1
-        if self.i == len(self.outputs):
+        if self.i == len(self.outputProtocolConnections):
             self.i = 0
     
-    def startOutputManager(self):
-        logger.debug("OutputManager.startOutputManager")
+    def startConnectionManager(self):
+        logger.debug("OutputProtocolConnectionManager.startConnectionManager")
         
         i = 0
-        while i < len(self.outputs):
-            output = self.outputs[i]
-            output.startOutput()
+        while i < len(self.outputProtocolConnections):
+            outputProtocolConnection = self.outputProtocolConnections[i]
+            outputProtocolConnection.startConnection()
             
             i = i + 1
     
-    def stopOutputManager(self):
-        logger.debug("OutputManager.stopOutputManager")
+    def stopConnectionManager(self):
+        logger.debug("OutputProtocolConnectionManager.stopConnectionManager")
         
         i = 0
-        while i < len(self.outputs):
-            output = self.outputs[i]
-            output.stopOutput()
+        while i < len(self.outputProtocolConnections):
+            outputProtocolConnection = self.outputProtocolConnections[i]
+            outputProtocolConnection.stopConnection()
             
             i = i + 1
     
-    def getOutputClass(self, type):
-        logger.debug("OutputManager.getOutputClass")
+    def getOutputProtocolConnectionClass(self, type):
+        logger.debug("OutputProtocolConnectionManager.getOutputProtocolConnectionClass")
         
         if type == "SSH":
-            return twunnel.localssh.SSHOutput
+            return twunnel.localssh.SSHOutputProtocolConnection
         else:
-            if type == "WS" or type == "WSS":
-                return twunnel.localws.WSOutput
+            if type == "WS":
+                return twunnel.localws.WSOutputProtocolConnection
             else:
-                return None
+                if type == "WSS":
+                    return twunnel.localws.WSOutputProtocolConnection
+                else:
+                    return None
 
 class SOCKS5InputProtocol(protocol.Protocol):
     implements(interfaces.IPushProducer)
@@ -525,7 +529,7 @@ class SOCKS5InputProtocol(protocol.Protocol):
         logger.debug("SOCKS5InputProtocol.__init__")
         
         self.configuration = None
-        self.outputManager = None
+        self.outputProtocolConnectionManager = None
         self.outputProtocol = None
         self.remoteAddress = ""
         self.remotePort = 0
@@ -597,7 +601,7 @@ class SOCKS5InputProtocol(protocol.Protocol):
         
         # connect
         if c == 0x01:
-            self.outputManager.connect(self.remoteAddress, self.remotePort, self)
+            self.outputProtocolConnectionManager.connect(self.remoteAddress, self.remotePort, self)
         else:
             response = struct.pack('!BBBBIH', 0x05, 0x07, 0x00, 0x01, 0, 0)
             self.transport.write(response)
@@ -676,32 +680,32 @@ class SOCKS5InputProtocol(protocol.Protocol):
 class SOCKS5InputProtocolFactory(protocol.ClientFactory):
     protocol = SOCKS5InputProtocol
     
-    def __init__(self, configuration, outputManager):
+    def __init__(self, configuration, outputProtocolConnectionManager):
         logger.debug("SOCKS5InputProtocolFactory.__init__")
         
         self.configuration = configuration
-        self.outputManager = outputManager
+        self.outputProtocolConnectionManager = outputProtocolConnectionManager
     
     def buildProtocol(self, *args, **kw):
-        p = protocol.ClientFactory.buildProtocol(self, *args, **kw)
-        p.configuration = self.configuration
-        p.outputManager = self.outputManager
-        return p
+        inputProtocol = protocol.ClientFactory.buildProtocol(self, *args, **kw)
+        inputProtocol.configuration = self.configuration
+        inputProtocol.outputProtocolConnectionManager = self.outputProtocolConnectionManager
+        return inputProtocol
     
     def startFactory(self):
         logger.debug("SOCKS5InputProtocolFactory.startFactory")
         
-        self.outputManager.startOutputManager()
+        self.outputProtocolConnectionManager.startConnectionManager()
     
     def stopFactory(self):
         logger.debug("SOCKS5InputProtocolFactory.stopFactory")
         
-        self.outputManager.stopOutputManager()
+        self.outputProtocolConnectionManager.stopConnectionManager()
 
-def createPort(configuration, outputManager=None):
-    if outputManager is None:
-        outputManager = OutputManager(configuration)
+def createPort(configuration, outputProtocolConnectionManager=None):
+    if outputProtocolConnectionManager is None:
+        outputProtocolConnectionManager = OutputProtocolConnectionManager(configuration)
     
-    factory = SOCKS5InputProtocolFactory(configuration, outputManager)
+    factory = SOCKS5InputProtocolFactory(configuration, outputProtocolConnectionManager)
     
     return tcp.Port(configuration["LOCAL_PROXY_SERVER"]["PORT"], factory, 50, configuration["LOCAL_PROXY_SERVER"]["ADDRESS"], reactor)

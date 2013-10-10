@@ -221,9 +221,9 @@ class SSHConnection(connection.SSHConnection):
         
         logger.debug("SSHConnection.serviceStopped: connections=" + str(len(self.transport.factory.output.connections)))
 
-class SSHOutput(object):
+class SSHOutputProtocolConnection(object):
     def __init__(self, configuration, i):
-        logger.debug("SSHOutput.__init__")
+        logger.debug("SSHOutputProtocolConnection.__init__")
         
         self.configuration = configuration
         self.i = i
@@ -234,7 +234,7 @@ class SSHOutput(object):
         self.factory = None
     
     def connect(self, remoteAddress, remotePort, inputProtocol):
-        logger.debug("SSHOutput.connect")
+        logger.debug("SSHOutputProtocolConnection.connect")
         
         connection = self.connections[self.j]
         
@@ -247,8 +247,8 @@ class SSHOutput(object):
         data = forwarding.packOpen_direct_tcpip((remoteAddress, remotePort), (self.configuration["LOCAL_PROXY_SERVER"]["ADDRESS"], self.configuration["LOCAL_PROXY_SERVER"]["PORT"]))
         connection.openChannel(inputProtocol.outputProtocol, data)
     
-    def startOutput(self):
-        logger.debug("SSHOutput.startOutput")
+    def startConnection(self):
+        logger.debug("SSHOutputProtocolConnection.startConnection")
         
         self.factory = SSHClientTransportFactory(self.configuration, self.i, self)
         
@@ -259,8 +259,8 @@ class SSHOutput(object):
             
             i = i + 1
     
-    def stopOutput(self):
-        logger.debug("SSHOutput.stopOutput")
+    def stopConnection(self):
+        logger.debug("SSHOutputProtocolConnection.stopConnection")
         
         self.factory.stopTrying()
         
