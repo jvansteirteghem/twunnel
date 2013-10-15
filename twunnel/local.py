@@ -43,28 +43,19 @@ def createResolver(configuration):
 class TunnelProtocol(protocol.Protocol):
     def __init__(self):
         logger.debug("TunnelProtocol.__init__")
-        
-        self.tunnelOutputProtocol = None
-        self.tunnelOutputProtocolFactory = None
-        
+    
     def connectionMade(self):
         logger.debug("TunnelProtocol.connectionMade")
         
-        tunnelOutputProtocolFactoryClass = self.getTunnelOutputProtocolFactoryClass(self.factory.configuration["PROXY_SERVERS"][self.factory.i]["TYPE"])
-        
-        if tunnelOutputProtocolFactoryClass is None:
-            self.transport.loseConnection()
-            return
-        
-        self.tunnelOutputProtocolFactory = tunnelOutputProtocolFactoryClass(self.factory.i, self.factory.configuration, self.factory.address, self.factory.port, self)
-        self.tunnelOutputProtocol = self.tunnelOutputProtocolFactory.buildProtocol(self.transport.getPeer())
-        self.tunnelOutputProtocol.makeConnection(self.transport)
-        
+        self.factory.tunnelOutputProtocolFactory.tunnelProtocol = self
+        self.factory.tunnelOutputProtocol = self.factory.tunnelOutputProtocolFactory.buildProtocol(self.transport.getPeer())
+        self.factory.tunnelOutputProtocol.makeConnection(self.transport)
+    
     def connectionLost(self, reason):
         logger.debug("TunnelProtocol.connectionLost")
         
-        if self.tunnelOutputProtocol is not None:
-            self.tunnelOutputProtocol.connectionLost(reason)
+        if self.factory.tunnelOutputProtocol is not None:
+            self.factory.tunnelOutputProtocol.connectionLost(reason)
         else:
             if self.factory.outputProtocol is not None:
                 self.factory.outputProtocol.connectionLost(reason)
@@ -72,8 +63,8 @@ class TunnelProtocol(protocol.Protocol):
     def dataReceived(self, data):
         logger.debug("TunnelProtocol.dataReceived")
         
-        if self.tunnelOutputProtocol is not None:
-            self.tunnelOutputProtocol.dataReceived(data)
+        if self.factory.tunnelOutputProtocol is not None:
+            self.factory.tunnelOutputProtocol.dataReceived(data)
         else:
             if self.factory.outputProtocol is not None:
                 self.factory.outputProtocol.dataReceived(data)
@@ -81,7 +72,7 @@ class TunnelProtocol(protocol.Protocol):
     def tunnelOutputProtocol_connectionMade(self, data):
         logger.debug("TunnelProtocol.tunnelOutputProtocol_connectionMade")
         
-        self.tunnelOutputProtocol = None
+        self.factory.tunnelOutputProtocol = None
         
         if self.factory.contextFactory is not None:
             self.transport.startTLS(self.factory.contextFactory)
@@ -91,22 +82,11 @@ class TunnelProtocol(protocol.Protocol):
         
         if len(data) > 0:
             self.factory.outputProtocol.dataReceived(data)
-    
-    def getTunnelOutputProtocolFactoryClass(self, type):
-        logger.debug("TunnelProtocol.getTunnelOutputProtocolFactoryClass")
-        
-        if type == "HTTP":
-            return HTTPTunnelOutputProtocolFactory
-        else:
-            if type == "SOCKS5":
-                return SOCKS5TunnelOutputProtocolFactory
-            else:
-                return None
 
 class TunnelProtocolFactory(protocol.ClientFactory):
     protocol = TunnelProtocol
     
-    def __init__(self, i, configuration, address, port, outputProtocolFactory, contextFactory=None, timeout=30, bindAddress=None):
+    def __init__(self, i, configuration, address, port, outputProtocolFactory, tunnelOutputProtocolFactory, contextFactory=None, timeout=30, bindAddress=None):
         logger.debug("TunnelProtocolFactory.__init__")
         
         self.i = i
@@ -115,6 +95,8 @@ class TunnelProtocolFactory(protocol.ClientFactory):
         self.port = port
         self.outputProtocol = None
         self.outputProtocolFactory = outputProtocolFactory
+        self.tunnelOutputProtocol = None
+        self.tunnelOutputProtocolFactory = tunnelOutputProtocolFactory
         self.contextFactory = contextFactory
         self.timeout = timeout
         self.bindAddress = bindAddress
@@ -137,6 +119,21 @@ class TunnelProtocolFactory(protocol.ClientFactory):
         else:
             self.outputProtocolFactory.clientConnectionLost(connector, reason)
 
+defaultTunnelClass = None
+
+def getDefaultTunnelClass():
+    global defaultTunnelClass
+    
+    if defaultTunnelClass is None:
+        defaultTunnelClass = Tunnel
+    
+    return defaultTunnelClass
+
+def setDefaultTunnelClass(tunnelClass):
+    global defaultTunnelClass
+    
+    defaultTunnelClass = tunnelClass
+
 class Tunnel(object):
     def __init__(self, configuration):
         logger.debug("Tunnel.__init__")
@@ -154,16 +151,33 @@ class Tunnel(object):
         else:
             i = len(self.configuration["PROXY_SERVERS"])
             
-            tunnelProtocolFactory = TunnelProtocolFactory(i - 1, self.configuration, address, port, outputProtocolFactory, contextFactory, timeout, bindAddress)
+            tunnelOutputProtocolFactoryClass = self.getTunnelOutputProtocolFactoryClass(self.configuration["PROXY_SERVERS"][i - 1]["TYPE"])
+            tunnelOutputProtocolFactory = tunnelOutputProtocolFactoryClass(i - 1, self.configuration, address, port)
+            
+            tunnelProtocolFactory = TunnelProtocolFactory(i - 1, self.configuration, address, port, outputProtocolFactory, tunnelOutputProtocolFactory, contextFactory, timeout, bindAddress)
             
             i = i - 1
             
             while i > 0:
-                tunnelProtocolFactory = TunnelProtocolFactory(i - 1, self.configuration, self.configuration["PROXY_SERVERS"][i]["ADDRESS"], self.configuration["PROXY_SERVERS"][i]["PORT"], tunnelProtocolFactory, contextFactory, timeout, bindAddress)
+                tunnelOutputProtocolFactoryClass = self.getTunnelOutputProtocolFactoryClass(self.configuration["PROXY_SERVERS"][i - 1]["TYPE"])
+                tunnelOutputProtocolFactory = tunnelOutputProtocolFactoryClass(i - 1, self.configuration, address, port)
+                
+                tunnelProtocolFactory = TunnelProtocolFactory(i - 1, self.configuration, self.configuration["PROXY_SERVERS"][i]["ADDRESS"], self.configuration["PROXY_SERVERS"][i]["PORT"], tunnelProtocolFactory, tunnelOutputProtocolFactory, contextFactory, timeout, bindAddress)
                 
                 i = i - 1
             
             return reactor.connectTCP(self.configuration["PROXY_SERVERS"][i]["ADDRESS"], self.configuration["PROXY_SERVERS"][i]["PORT"], tunnelProtocolFactory, timeout, bindAddress)
+    
+    def getTunnelOutputProtocolFactoryClass(self, type):
+        logger.debug("Tunnel.getTunnelOutputProtocolFactoryClass")
+        
+        if type == "HTTP":
+            return HTTPTunnelOutputProtocolFactory
+        else:
+            if type == "SOCKS5":
+                return SOCKS5TunnelOutputProtocolFactory
+            else:
+                return None
 
 class HTTPTunnelOutputProtocol(protocol.Protocol):
     def __init__(self):
@@ -225,14 +239,14 @@ class HTTPTunnelOutputProtocol(protocol.Protocol):
 class HTTPTunnelOutputProtocolFactory(protocol.ClientFactory):
     protocol = HTTPTunnelOutputProtocol
     
-    def __init__(self, i, configuration, address, port, tunnelProtocol):
+    def __init__(self, i, configuration, address, port):
         logger.debug("HTTPTunnelOutputProtocolFactory.__init__")
         
         self.i = i
         self.configuration = configuration
         self.address = address
         self.port = port
-        self.tunnelProtocol = tunnelProtocol
+        self.tunnelProtocol = None
     
     def startedConnecting(self, connector):
         logger.debug("HTTPTunnelOutputProtocolFactory.startedConnecting")
@@ -332,14 +346,14 @@ class SOCKS5TunnelOutputProtocol(protocol.Protocol):
 class SOCKS5TunnelOutputProtocolFactory(protocol.ClientFactory):
     protocol = SOCKS5TunnelOutputProtocol
     
-    def __init__(self, i, configuration, address, port, tunnelProtocol):
+    def __init__(self, i, configuration, address, port):
         logger.debug("SOCKS5TunnelOutputProtocolFactory.__init__")
         
         self.i = i
         self.configuration = configuration
         self.address = address
         self.port = port
-        self.tunnelProtocol = tunnelProtocol
+        self.tunnelProtocol = None
     
     def startedConnecting(self, connector):
         logger.debug("SOCKS5TunnelOutputProtocolFactory.startedConnecting")
@@ -446,7 +460,8 @@ class OutputProtocolConnection(object):
         
         outputProtocolFactory = OutputProtocolFactory(inputProtocol)
         
-        tunnel = Tunnel(self.configuration)
+        tunnelClass = getDefaultTunnelClass()
+        tunnel = tunnelClass(self.configuration)
         tunnel.connect(remoteAddress, remotePort, outputProtocolFactory)
         
     def startConnection(self):

@@ -254,7 +254,8 @@ class SSHOutputProtocolConnection(object):
         
         i = 0
         while i < self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ACCOUNT"]["CONNECTIONS"]:
-            tunnel = twunnel.local.Tunnel(self.configuration)
+            tunnelClass = twunnel.local.getDefaultTunnelClass()
+            tunnel = tunnelClass(self.configuration)
             tunnel.connect(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"], self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"], self.factory)
             
             i = i + 1

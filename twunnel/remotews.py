@@ -6,14 +6,14 @@ from twisted.internet import interfaces, reactor, ssl, tcp
 import json
 import logging
 import autobahn.websocket
-from twunnel import local
+import twunnel.local
 
 logger = logging.getLogger(__name__)
 
-class WSOutputProtocol(local.OutputProtocol):
+class WSOutputProtocol(twunnel.local.OutputProtocol):
     pass
 
-class WSOutputProtocolFactory(local.OutputProtocolFactory):
+class WSOutputProtocolFactory(twunnel.local.OutputProtocolFactory):
     protocol = WSOutputProtocol
 
 class WSInputProtocol(autobahn.websocket.WebSocketServerProtocol):
@@ -87,7 +87,8 @@ class WSInputProtocol(autobahn.websocket.WebSocketServerProtocol):
         
         outputProtocolFactory = WSOutputProtocolFactory(self)
         
-        tunnel = local.Tunnel(self.configuration)
+        tunnelClass = twunnel.local.getDefaultTunnelClass()
+        tunnel = tunnelClass(self.configuration)
         tunnel.connect(self.remoteAddress, self.remotePort, outputProtocolFactory)
     
     def processMessageState1(self):

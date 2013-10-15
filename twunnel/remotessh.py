@@ -9,14 +9,14 @@ from twisted.conch.ssh import channel, factory, forwarding, keys
 from twisted.cred import checkers, credentials, portal
 from twisted.cred.error import UnauthorizedLogin
 import logging
-from twunnel import local
+import twunnel.local
 
 logger = logging.getLogger(__name__)
 
-class SSHOutputProtocol(local.OutputProtocol):
+class SSHOutputProtocol(twunnel.local.OutputProtocol):
     pass
 
-class SSHOutputProtocolFactory(local.OutputProtocolFactory):
+class SSHOutputProtocolFactory(twunnel.local.OutputProtocolFactory):
     protocol = SSHOutputProtocol
 
 class SSHChannel(channel.SSHChannel):
@@ -43,7 +43,8 @@ class SSHChannel(channel.SSHChannel):
         
         outputProtocolFactory = SSHOutputProtocolFactory(self)
         
-        tunnel = local.Tunnel(self.configuration)
+        tunnelClass = twunnel.local.getDefaultTunnelClass()
+        tunnel = tunnelClass(self.configuration)
         tunnel.connect(self.remoteAddress, self.remotePort, outputProtocolFactory)
 
     def openFailed(self, reason):
