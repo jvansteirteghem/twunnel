@@ -475,7 +475,7 @@ class OutputProtocolConnectionManager(object):
         logger.debug("OutputProtocolConnectionManager.__init__")
         
         self.configuration = configuration
-        self.i = 0
+        self.i = -1
         
         self.outputProtocolConnections = []
         
@@ -496,12 +496,12 @@ class OutputProtocolConnectionManager(object):
     def connect(self, remoteAddress, remotePort, inputProtocol):
         logger.debug("OutputProtocolConnectionManager.connect")
         
+        self.i = self.i + 1
+        if self.i >= len(self.outputProtocolConnections):
+            self.i = 0
+        
         outputProtocolConnection = self.outputProtocolConnections[self.i]
         outputProtocolConnection.connect(remoteAddress, remotePort, inputProtocol)
-        
-        self.i = self.i + 1
-        if self.i == len(self.outputProtocolConnections):
-            self.i = 0
     
     def startConnectionManager(self):
         logger.debug("OutputProtocolConnectionManager.startConnectionManager")

@@ -101,11 +101,12 @@ def start_REMOTE_PROXY_SERVER():
                         {
                             "PUBLIC":
                             {
-                                "FILE": "",
+                                "FILE": "example3/KP.pem",
                                 "PASSPHRASE": ""
                             }
                         }
-                    ]
+                    ],
+                    "CONNECTIONS": 2
                 }
             ]
         }

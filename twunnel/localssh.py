@@ -227,7 +227,7 @@ class SSHOutputProtocolConnection(object):
         
         self.configuration = configuration
         self.i = i
-        self.j = 0
+        self.j = -1
         
         self.connections = []
         self.connectors = []
@@ -236,11 +236,14 @@ class SSHOutputProtocolConnection(object):
     def connect(self, remoteAddress, remotePort, inputProtocol):
         logger.debug("SSHOutputProtocolConnection.connect")
         
-        connection = self.connections[self.j]
+        if len(self.connections) == 0:
+            return
         
         self.j = self.j + 1
-        if self.j == len(self.connections):
+        if self.j >= len(self.connections):
             self.j = 0
+        
+        connection = self.connections[self.j]
         
         inputProtocol.outputProtocol = SSHChannel(conn = connection)
         inputProtocol.outputProtocol.inputProtocol = inputProtocol

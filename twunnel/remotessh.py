@@ -3,7 +3,7 @@
 
 from zope.interface import implements
 from twisted.internet import defer, interfaces, reactor, tcp
-from twisted.conch import avatar, interfaces as interfaces2
+from twisted.conch import avatar
 from twisted.conch.error import ValidPublicKey
 from twisted.conch.ssh import channel, factory, forwarding, keys
 from twisted.cred import checkers, credentials, portal
@@ -160,17 +160,16 @@ class SSHChannel(channel.SSHChannel):
         self.outputProtocol.pauseProducing()
 
 class SSHConchUser(avatar.ConchUser):
-    def __init__(self, configuration):
+    def __init__(self, configuration, i, interface):
         logger.debug("SSHConchUser.__init__")
         
         avatar.ConchUser.__init__(self)
         
         self.configuration = configuration
+        self.i = i
+        self.interface = interface
         
         self.channelLookup["direct-tcpip"] = self.openSSHChannel
-    
-    def logout(self):
-        logger.debug("SSHConchUser.logout")
     
     def openSSHChannel(self, remoteWindow, remoteMaxPacket, data, avatar):
         logger.debug("SSHConchUser.openSSHChannel")
@@ -197,6 +196,7 @@ class SSHUsernamePasswordCredentialsChecker(object):
         logger.debug("SSHUsernamePasswordCredentialsChecker.requestAvatarId")
         
         authorized = False
+        i = -1
         
         if len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]) == 0:
             authorized = True
@@ -210,15 +210,16 @@ class SSHUsernamePasswordCredentialsChecker(object):
                             authorized = True
                     
                     if authorized == False:
-                        return defer.fail(UnauthorizedLogin("ERROR_CREDENTIALS_PASSWORD"))
+                        return defer.fail(UnauthorizedLogin("ERROR_ACCOUNT_PASSWORD"))
                     
                     break
+                
                 i = i + 1
             
             if authorized == False:
-                return defer.fail(UnauthorizedLogin("ERROR_CREDENTIALS_USERNAME"))
+                return defer.fail(UnauthorizedLogin("ERROR_ACCOUNT_NAME"))
         
-        return defer.succeed(credentials.username)
+        return defer.succeed(i)
 
 class SSHPrivateKeyCredentialsChecker(object):
     implements(checkers.ICredentialsChecker)
@@ -233,6 +234,7 @@ class SSHPrivateKeyCredentialsChecker(object):
         logger.debug("SSHPrivateKeyCredentialsChecker.requestAvatarId")
         
         authorized = False
+        i = -1
         
         if len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]) == 0:
             authorized = True
@@ -248,29 +250,29 @@ class SSHPrivateKeyCredentialsChecker(object):
                             
                             if key.blob() == credentials.blob:
                                 if credentials.signature is None:
-                                    return defer.fail(ValidPublicKey("ERROR_CREDENTIALS_SIGNATURE"))
+                                    return defer.fail(ValidPublicKey("ERROR_ACCOUNT_KEYS_PUBLIC"))
                                 
                                 if key.verify(credentials.signature, credentials.sigData):
                                     authorized = True
                                 
                                 if authorized == False:
-                                    return defer.fail(UnauthorizedLogin("ERROR_CREDENTIALS_SIGNATURE"))
+                                    return defer.fail(UnauthorizedLogin("ERROR_ACCOUNT_KEYS_PUBLIC"))
                                 
                                 break
                         
                         j = j + 1
                     
                     if authorized == False:
-                        return defer.fail(UnauthorizedLogin("ERROR_CREDENTIALS_BLOB"))
+                        return defer.fail(UnauthorizedLogin("ERROR_ACCOUNT_KEYS_PUBLIC"))
                     
                     break
                 
                 i = i + 1
             
             if authorized == False:
-                return defer.fail(UnauthorizedLogin("ERROR_CREDENTIALS_USERNAME"))
+                return defer.fail(UnauthorizedLogin("ERROR_ACCOUNT_NAME"))
         
-        return defer.succeed(credentials.username)
+        return defer.succeed(i)
 
 class SSHRealm(object):
     implements(portal.IRealm)
@@ -279,15 +281,43 @@ class SSHRealm(object):
         logger.debug("SSHRealm.__init__")
         
         self.configuration = configuration
+        self.avatars = {}
+        
+        i = 0
+        while i < len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]):
+            self.avatars[i] = []
+            i = i + 1
         
     def requestAvatar(self, avatarId, mind, *avatarInterfaces):
         logger.debug("SSHRealm.requestAvatar")
         
-        userInterface = interfaces2.IConchUser
-        user = SSHConchUser(self.configuration)
+        i = avatarId
+        interface = avatarInterfaces[0]
+        avatar = SSHConchUser(self.configuration, i, interface)
         
-        return (userInterface, user, user.logout)
-
+        if self.loginAvatar(avatar) == False:
+            return defer.fail(UnauthorizedLogin("ERROR_ACCOUNT_CONNECTIONS"))
+        
+        return defer.succeed((avatar.interface, avatar, lambda: self.logoutAvatar(avatar)))
+    
+    def loginAvatar(self, avatar):
+        logger.debug("SSHRealm.loginAvatar")
+        
+        if len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]) != 0:
+            if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][avatar.i]["CONNECTIONS"] == len(self.avatars[avatar.i]):
+                return False
+        
+        self.avatars[avatar.i].append(avatar)
+        
+        return True
+    
+    def logoutAvatar(self, avatar):
+        logger.debug("SSHRealm.logoutAvatar")
+        
+        self.avatars[avatar.i].remove(avatar)
+        
+        return True
+    
 class SSHInputProtocolFactory(factory.SSHFactory):
     def __init__(self, configuration):
         logger.debug("SSHInputProtocolFactory.__init__")
@@ -297,8 +327,8 @@ class SSHInputProtocolFactory(factory.SSHFactory):
         realm = SSHRealm(self.configuration)
         
         checkers = [
-            SSHUsernamePasswordCredentialsChecker(configuration),
-            SSHPrivateKeyCredentialsChecker(configuration)
+            SSHUsernamePasswordCredentialsChecker(self.configuration),
+            SSHPrivateKeyCredentialsChecker(self.configuration)
         ]
         
         self.portal = portal.Portal(realm, checkers)
