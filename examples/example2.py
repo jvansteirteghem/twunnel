@@ -60,7 +60,7 @@ def connect(port):
     if factory.port == 443:
         contextFactory = ssl.ClientContextFactory()
     
-    tunnel = local.Tunnel(configuration)
+    tunnel = local.createTunnel(configuration)
     tunnel.connect(factory.address, factory.port, factory, contextFactory)
 
 reactor.callLater(0, start_LOCAL_PROXY_SERVER)

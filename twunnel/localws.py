@@ -193,8 +193,7 @@ class WSOutputProtocolConnection(object):
         if self.configuration["REMOTE_PROXY_SERVERS"][self.i]["TYPE"] == "WS":
             factory = WSOutputProtocolFactory(self.configuration, self.i, remoteAddress, remotePort, inputProtocol, "ws://" + str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"]) + ":" + str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"]))
             
-            tunnelClass = twunnel.local.getDefaultTunnelClass()
-            tunnel = tunnelClass(self.configuration)
+            tunnel = twunnel.local.createTunnel(self.configuration)
             tunnel.connect(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"], self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"], factory)
         else:
             factory = WSOutputProtocolFactory(self.configuration, self.i, remoteAddress, remotePort, inputProtocol, "wss://" + str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"]) + ":" + str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"]))
@@ -204,8 +203,7 @@ class WSOutputProtocolConnection(object):
             else:
                 contextFactory = ssl.ClientContextFactory()
             
-            tunnelClass = twunnel.local.getDefaultTunnelClass()
-            tunnel = tunnelClass(self.configuration)
+            tunnel = twunnel.local.createTunnel(self.configuration)
             tunnel.connect(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"], self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"], factory, contextFactory)
     
     def startConnection(self):

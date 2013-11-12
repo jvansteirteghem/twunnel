@@ -43,8 +43,7 @@ class SSHChannel(channel.SSHChannel):
         
         outputProtocolFactory = SSHOutputProtocolFactory(self)
         
-        tunnelClass = twunnel.local.getDefaultTunnelClass()
-        tunnel = tunnelClass(self.configuration)
+        tunnel = twunnel.local.createTunnel(self.configuration)
         tunnel.connect(self.remoteAddress, self.remotePort, outputProtocolFactory)
 
     def openFailed(self, reason):
@@ -363,7 +362,7 @@ class SSHInputProtocolFactory(factory.SSHFactory):
             key.sshType(): key
         }
 
-def createPort(configuration):
+def createSSHPort(configuration):
     factory = SSHInputProtocolFactory(configuration)
     
     return tcp.Port(configuration["REMOTE_PROXY_SERVER"]["PORT"], factory, 50, configuration["REMOTE_PROXY_SERVER"]["ADDRESS"], reactor)

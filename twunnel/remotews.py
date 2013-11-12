@@ -87,8 +87,7 @@ class WSInputProtocol(autobahn.websocket.WebSocketServerProtocol):
         
         outputProtocolFactory = WSOutputProtocolFactory(self)
         
-        tunnelClass = twunnel.local.getDefaultTunnelClass()
-        tunnel = tunnelClass(self.configuration)
+        tunnel = twunnel.local.createTunnel(self.configuration)
         tunnel.connect(self.remoteAddress, self.remotePort, outputProtocolFactory)
     
     def processMessageState1(self):
@@ -184,7 +183,7 @@ class WSInputProtocolFactory(autobahn.websocket.WebSocketServerFactory):
         inputProtocol.configuration = self.configuration
         return inputProtocol
 
-def createPort(configuration):
+def createWSPort(configuration):
     if configuration["REMOTE_PROXY_SERVER"]["TYPE"] == "WS":
         factory = WSInputProtocolFactory(configuration, "ws://" + str(configuration["REMOTE_PROXY_SERVER"]["ADDRESS"]) + ":" + str(configuration["REMOTE_PROXY_SERVER"]["PORT"]))
         

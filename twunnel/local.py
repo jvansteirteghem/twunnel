@@ -21,6 +21,16 @@ class ClientResolver(client.Resolver):
     lookupAllRecords = client.Resolver.lookupAddress
 
 def createResolver(configuration):
+    configuration.setdefault("DNS_RESOLVER", {})
+    configuration["DNS_RESOLVER"].setdefault("HOSTS", {})
+    configuration["DNS_RESOLVER"]["HOSTS"].setdefault("FILE", "")
+    configuration["DNS_RESOLVER"].setdefault("SERVERS", [])
+    i = 0
+    while i < len(configuration["DNS_RESOLVER"]["SERVERS"]):
+        configuration["DNS_RESOLVER"]["SERVERS"][i].setdefault("ADDRESS", "")
+        configuration["DNS_RESOLVER"]["SERVERS"][i].setdefault("PORT", 0)
+        i = i + 1
+    
     resolverFile = configuration["DNS_RESOLVER"]["HOSTS"]["FILE"]
     resolverServers = []
     i = 0
@@ -133,6 +143,23 @@ def setDefaultTunnelClass(tunnelClass):
     global defaultTunnelClass
     
     defaultTunnelClass = tunnelClass
+
+def createTunnel(configuration):
+    configuration.setdefault("PROXY_SERVERS", [])
+    i = 0
+    while i < len(configuration["PROXY_SERVERS"]):
+        configuration["PROXY_SERVERS"][i].setdefault("TYPE", "")
+        configuration["PROXY_SERVERS"][i].setdefault("ADDRESS", "")
+        configuration["PROXY_SERVERS"][i].setdefault("PORT", 0)
+        configuration["PROXY_SERVERS"][i].setdefault("ACCOUNT", {})
+        configuration["PROXY_SERVERS"][i]["ACCOUNT"].setdefault("NAME", "")
+        configuration["PROXY_SERVERS"][i]["ACCOUNT"].setdefault("PASSWORD", "")
+        i = i + 1
+    
+    tunnelClass = getDefaultTunnelClass()
+    tunnel = tunnelClass(configuration)
+    
+    return tunnel
 
 class Tunnel(object):
     def __init__(self, configuration):
@@ -460,8 +487,7 @@ class OutputProtocolConnection(object):
         
         outputProtocolFactory = OutputProtocolFactory(inputProtocol)
         
-        tunnelClass = getDefaultTunnelClass()
-        tunnel = tunnelClass(self.configuration)
+        tunnel = createTunnel(self.configuration)
         tunnel.connect(remoteAddress, remotePort, outputProtocolFactory)
         
     def startConnection(self):
@@ -717,10 +743,61 @@ class SOCKS5InputProtocolFactory(protocol.ClientFactory):
         
         self.outputProtocolConnectionManager.stopConnectionManager()
 
-def createPort(configuration, outputProtocolConnectionManager=None):
-    if outputProtocolConnectionManager is None:
-        outputProtocolConnectionManager = OutputProtocolConnectionManager(configuration)
-    
+def createSOCKS5Port(configuration, outputProtocolConnectionManager):
     factory = SOCKS5InputProtocolFactory(configuration, outputProtocolConnectionManager)
     
     return tcp.Port(configuration["LOCAL_PROXY_SERVER"]["PORT"], factory, 50, configuration["LOCAL_PROXY_SERVER"]["ADDRESS"], reactor)
+
+def createPort(configuration):
+    configuration.setdefault("LOCAL_PROXY_SERVER", {})
+    configuration["LOCAL_PROXY_SERVER"].setdefault("TYPE", "")
+    configuration["LOCAL_PROXY_SERVER"].setdefault("ADDRESS", "")
+    configuration["LOCAL_PROXY_SERVER"].setdefault("PORT", 0)
+    configuration.setdefault("REMOTE_PROXY_SERVERS", [])
+    i = 0
+    while i < len(configuration["REMOTE_PROXY_SERVERS"]):
+        configuration["REMOTE_PROXY_SERVERS"][i].setdefault("TYPE", "")
+        if configuration["REMOTE_PROXY_SERVERS"][i]["TYPE"] == "SSH":
+            configuration["REMOTE_PROXY_SERVERS"][i].setdefault("ADDRESS", "")
+            configuration["REMOTE_PROXY_SERVERS"][i].setdefault("PORT", 0)
+            configuration["REMOTE_PROXY_SERVERS"][i].setdefault("KEY", {})
+            configuration["REMOTE_PROXY_SERVERS"][i]["KEY"].setdefault("FINGERPRINT", "")
+            configuration["REMOTE_PROXY_SERVERS"][i].setdefault("ACCOUNT", {})
+            configuration["REMOTE_PROXY_SERVERS"][i]["ACCOUNT"].setdefault("NAME", "")
+            configuration["REMOTE_PROXY_SERVERS"][i]["ACCOUNT"].setdefault("PASSWORD", "")
+            configuration["REMOTE_PROXY_SERVERS"][i]["ACCOUNT"].setdefault("KEYS", [])
+            j = 0
+            while j < len(configuration["REMOTE_PROXY_SERVERS"][i]["ACCOUNT"]["KEYS"]):
+                configuration["REMOTE_PROXY_SERVERS"][i]["ACCOUNT"]["KEYS"][j].setdefault("PUBLIC", {})
+                configuration["REMOTE_PROXY_SERVERS"][i]["ACCOUNT"]["KEYS"][j]["PUBLIC"].setdefault("FILE", "")
+                configuration["REMOTE_PROXY_SERVERS"][i]["ACCOUNT"]["KEYS"][j]["PUBLIC"].setdefault("PASSPHRASE", "")
+                configuration["REMOTE_PROXY_SERVERS"][i]["ACCOUNT"]["KEYS"][j].setdefault("PRIVATE", {})
+                configuration["REMOTE_PROXY_SERVERS"][i]["ACCOUNT"]["KEYS"][j]["PRIVATE"].setdefault("FILE", "")
+                configuration["REMOTE_PROXY_SERVERS"][i]["ACCOUNT"]["KEYS"][j]["PRIVATE"].setdefault("PASSPHRASE", "")
+                j = j + 1
+            configuration["REMOTE_PROXY_SERVERS"][i]["ACCOUNT"].setdefault("CONNECTIONS", 0)
+        else:
+            if configuration["REMOTE_PROXY_SERVERS"][i]["TYPE"] == "WS":
+                configuration["REMOTE_PROXY_SERVERS"][i].setdefault("ADDRESS", "")
+                configuration["REMOTE_PROXY_SERVERS"][i].setdefault("PORT", 0)
+                configuration["REMOTE_PROXY_SERVERS"][i].setdefault("ACCOUNT", {})
+                configuration["REMOTE_PROXY_SERVERS"][i]["ACCOUNT"].setdefault("NAME", "")
+                configuration["REMOTE_PROXY_SERVERS"][i]["ACCOUNT"].setdefault("PASSWORD", "")
+            else:
+                if configuration["REMOTE_PROXY_SERVERS"][i]["TYPE"] == "WSS":
+                    configuration["REMOTE_PROXY_SERVERS"][i].setdefault("ADDRESS", "")
+                    configuration["REMOTE_PROXY_SERVERS"][i].setdefault("PORT", 0)
+                    configuration["REMOTE_PROXY_SERVERS"][i].setdefault("CERTIFICATE", {})
+                    configuration["REMOTE_PROXY_SERVERS"][i]["CERTIFICATE"].setdefault("AUTHORITY", {})
+                    configuration["REMOTE_PROXY_SERVERS"][i]["CERTIFICATE"]["AUTHORITY"].setdefault("FILE", "")
+                    configuration["REMOTE_PROXY_SERVERS"][i].setdefault("ACCOUNT", {})
+                    configuration["REMOTE_PROXY_SERVERS"][i]["ACCOUNT"].setdefault("NAME", "")
+                    configuration["REMOTE_PROXY_SERVERS"][i]["ACCOUNT"].setdefault("PASSWORD", "")
+        i = i + 1
+    
+    outputProtocolConnectionManager = OutputProtocolConnectionManager(configuration)
+    
+    if configuration["LOCAL_PROXY_SERVER"]["TYPE"] == "SOCKS5":
+        return createSOCKS5Port(configuration, outputProtocolConnectionManager)
+    else:
+        return None
