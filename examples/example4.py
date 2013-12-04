@@ -3,11 +3,21 @@ import os
 sys.path.insert(0, os.path.abspath(".."))
 
 from twisted.internet import reactor, ssl
-import logging
-from twunnel import local, remote
-from example import example
+from twisted.python import log
+from twunnel import local_proxy_server, logger, proxy_server, remote_proxy_server
+from examples import example
 
-logging.basicConfig(level=logging.DEBUG)
+log.startLogging(sys.stdout)
+
+configuration = \
+{
+    "LOGGER":
+    {
+        "LEVEL": 3
+    }
+}
+
+logger.configure(configuration)
 
 port_LOCAL_PROXY_SERVER = None
 port_REMOTE_PROXY_SERVER = None
@@ -34,7 +44,7 @@ def start_LOCAL_PROXY_SERVER():
                 {
                     "AUTHORITY":
                     {
-                        "FILE": "example4/CA.pem"
+                        "FILE": "files/WSS/CA.pem"
                     }
                 },
                 "ACCOUNT":
@@ -46,7 +56,7 @@ def start_LOCAL_PROXY_SERVER():
         ]
     }
     
-    port_LOCAL_PROXY_SERVER = local.createPort(configuration)
+    port_LOCAL_PROXY_SERVER = local_proxy_server.createPort(configuration)
     port_LOCAL_PROXY_SERVER.startListening()
 
 def stop_LOCAL_PROXY_SERVER():
@@ -67,10 +77,10 @@ def start_REMOTE_PROXY_SERVER():
             "PORT": 8443,
             "CERTIFICATE":
             {
-                "FILE": "example4/C.pem",
+                "FILE": "files/WSS/C.pem",
                 "KEY":
                 {
-                    "FILE": "example4/CK.pem"
+                    "FILE": "files/WSS/CK.pem"
                 }
             },
             "ACCOUNTS":
@@ -83,7 +93,7 @@ def start_REMOTE_PROXY_SERVER():
         }
     }
     
-    port_REMOTE_PROXY_SERVER = remote.createPort(configuration)
+    port_REMOTE_PROXY_SERVER = remote_proxy_server.createPort(configuration)
     port_REMOTE_PROXY_SERVER.startListening()
 
 def stop_REMOTE_PROXY_SERVER():
@@ -103,12 +113,7 @@ def connect(port):
             {
                 "TYPE": "SOCKS5",
                 "ADDRESS": "127.0.0.1",
-                "PORT": 1080,
-                "ACCOUNT":
-                {
-                    "NAME": "",
-                    "PASSWORD": ""
-                }
+                "PORT": 1080
             }
         ]
     }
@@ -117,7 +122,7 @@ def connect(port):
     if factory.port == 443:
         contextFactory = ssl.ClientContextFactory()
     
-    tunnel = local.createTunnel(configuration)
+    tunnel = proxy_server.createTunnel(configuration)
     tunnel.connect(factory.address, factory.port, factory, contextFactory)
 
 reactor.callLater(0, start_REMOTE_PROXY_SERVER)

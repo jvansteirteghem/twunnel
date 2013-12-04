@@ -3,11 +3,21 @@ import os
 sys.path.insert(0, os.path.abspath(".."))
 
 from twisted.internet import reactor, ssl
-import logging
-from twunnel import local
-from example import example
+from twisted.python import log
+from twunnel import local_proxy_server, logger, proxy_server
+from examples import example
 
-logging.basicConfig(level=logging.DEBUG)
+log.startLogging(sys.stdout)
+
+configuration = \
+{
+    "LOGGER":
+    {
+        "LEVEL": 3
+    }
+}
+
+logger.configure(configuration)
 
 port_LOCAL_PROXY_SERVER = None
 
@@ -26,7 +36,7 @@ def start_LOCAL_PROXY_SERVER():
         "REMOTE_PROXY_SERVERS": []
     }
     
-    port_LOCAL_PROXY_SERVER = local.createPort(configuration)
+    port_LOCAL_PROXY_SERVER = local_proxy_server.createPort(configuration)
     port_LOCAL_PROXY_SERVER.startListening()
 
 def stop_LOCAL_PROXY_SERVER():
@@ -46,12 +56,7 @@ def connect(port):
             {
                 "TYPE": "SOCKS5",
                 "ADDRESS": "127.0.0.1",
-                "PORT": 1080,
-                "ACCOUNT":
-                {
-                    "NAME": "",
-                    "PASSWORD": ""
-                }
+                "PORT": 1080
             }
         ]
     }
@@ -60,7 +65,7 @@ def connect(port):
     if factory.port == 443:
         contextFactory = ssl.ClientContextFactory()
     
-    tunnel = local.createTunnel(configuration)
+    tunnel = proxy_server.createTunnel(configuration)
     tunnel.connect(factory.address, factory.port, factory, contextFactory)
 
 reactor.callLater(0, start_LOCAL_PROXY_SERVER)

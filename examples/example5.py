@@ -3,11 +3,21 @@ import os
 sys.path.insert(0, os.path.abspath(".."))
 
 from twisted.internet import reactor, ssl
-import logging
-from twunnel import local
-from example import example
+from twisted.python import log
+from twunnel import dns_resolver, logger, proxy_server
+from examples import example
 
-logging.basicConfig(level=logging.DEBUG)
+log.startLogging(sys.stdout)
+
+configuration = \
+{
+    "LOGGER":
+    {
+        "LEVEL": 3
+    }
+}
+
+logger.configure(configuration)
 
 def install_DNS_RESOLVER():
     configuration = \
@@ -16,7 +26,7 @@ def install_DNS_RESOLVER():
         {
             "HOSTS":
             {
-                "FILE": "example5/H.txt"
+                "FILE": "files/DNS/H.txt"
             },
             "SERVERS":
             [
@@ -32,9 +42,8 @@ def install_DNS_RESOLVER():
         }
     }
     
-    resolver = local.createResolver(configuration)
-    
-    reactor.installResolver(resolver)
+    resolver = dns_resolver.createResolver(configuration)
+    dns_resolver.setDefaultResolver(resolver)
 
 def connect(port):
     factory = example.ProtocolFactory()
@@ -50,7 +59,7 @@ def connect(port):
     if factory.port == 443:
         contextFactory = ssl.ClientContextFactory()
     
-    tunnel = local.createTunnel(configuration)
+    tunnel = proxy_server.createTunnel(configuration)
     tunnel.connect(factory.address, factory.port, factory, contextFactory)
 
 reactor.callLater(0, install_DNS_RESOLVER)

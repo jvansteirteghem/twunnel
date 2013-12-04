@@ -10,7 +10,7 @@ from twisted.test import proto_helpers
 import base64
 import struct
 import socket
-from twunnel import local
+from twunnel import proxy_server
 
 class TestTunnelProtocol(protocol.Protocol):
     def __init__(self):
@@ -49,7 +49,7 @@ class HTTPTunnelTestCase(unittest.TestCase):
         self.remoteAddress = "127.0.0.1"
         self.remotePort = 80
         
-        self.tunnelOutputProtocolFactory = local.HTTPTunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort)
+        self.tunnelOutputProtocolFactory = proxy_server.HTTPTunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort)
         self.tunnelOutputProtocolFactory.tunnelProtocol = TestTunnelProtocol()
         self.tunnelOutputProtocol = self.tunnelOutputProtocolFactory.buildProtocol((self.remoteAddress, self.remotePort))
         self.transport = proto_helpers.StringTransport()
@@ -87,7 +87,7 @@ class HTTPTunnelBasicAuthenticationTestCase(unittest.TestCase):
         self.remoteAddress = "127.0.0.1"
         self.remotePort = 80
         
-        self.tunnelOutputProtocolFactory = local.HTTPTunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort)
+        self.tunnelOutputProtocolFactory = proxy_server.HTTPTunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort)
         self.tunnelOutputProtocolFactory.tunnelProtocol = TestTunnelProtocol()
         self.tunnelOutputProtocol = self.tunnelOutputProtocolFactory.buildProtocol((self.remoteAddress, self.remotePort))
         self.transport = proto_helpers.StringTransport()
@@ -125,7 +125,7 @@ class SOCKS5TunnelIPv4TestCase(unittest.TestCase):
         self.remoteAddress = "127.0.0.1"
         self.remotePort = 80
         
-        self.tunnelOutputProtocolFactory = local.SOCKS5TunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort)
+        self.tunnelOutputProtocolFactory = proxy_server.SOCKS5TunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort)
         self.tunnelOutputProtocolFactory.tunnelProtocol = TestTunnelProtocol()
         self.tunnelOutputProtocol = self.tunnelOutputProtocolFactory.buildProtocol((self.remoteAddress, self.remotePort))
         self.transport = proto_helpers.StringTransport()
@@ -189,7 +189,7 @@ class SOCKS5TunnelDNTestCase(unittest.TestCase):
         self.remoteAddress = "localhost"
         self.remotePort = 80
         
-        self.tunnelOutputProtocolFactory = local.SOCKS5TunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort)
+        self.tunnelOutputProtocolFactory = proxy_server.SOCKS5TunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort)
         self.tunnelOutputProtocolFactory.tunnelProtocol = TestTunnelProtocol()
         self.tunnelOutputProtocol = self.tunnelOutputProtocolFactory.buildProtocol((self.remoteAddress, self.remotePort))
         self.transport = proto_helpers.StringTransport()

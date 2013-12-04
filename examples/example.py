@@ -1,17 +1,15 @@
 from twisted.internet import protocol, reactor
-import logging
-
-logger = logging.getLogger(__name__)
+import twunnel.logger
 
 class Protocol(protocol.Protocol):
     def __init__(self):
-        logger.debug("Protocol.__init__")
+        twunnel.logger.log(3, "trace: Protocol.__init__")
         
         self.request = ""
         self.response = ""
         
     def connectionMade(self):
-        logger.debug("Protocol.connectionMade")
+        twunnel.logger.log(3, "trace: Protocol.connectionMade")
         
         self.request = "HEAD / HTTP/1.1\r\n"
         
@@ -22,15 +20,15 @@ class Protocol(protocol.Protocol):
         
         self.request = self.request + "\r\n"
         
-        logger.info("request: " + self.request)
+        twunnel.logger.log(2, "request: " + self.request)
         
         self.transport.write(self.request)
     
     def connectionLost(self, reason):
-        logger.debug("Protocol.connectionLost")
+        twunnel.logger.log(3, "trace: Protocol.connectionLost")
         
     def dataReceived(self, data):
-        logger.debug("Protocol.dataReceived")
+        twunnel.logger.log(3, "trace: Protocol.dataReceived")
         
         self.response = self.response + data
         
@@ -39,7 +37,7 @@ class Protocol(protocol.Protocol):
         if i == -1:
             return
         
-        logger.info("response: " + self.response)
+        twunnel.logger.log(2, "response: " + self.response)
         
         self.transport.loseConnection()
         
@@ -47,16 +45,16 @@ class ProtocolFactory(protocol.ClientFactory):
     protocol = Protocol
     
     def __init__(self):
-        logger.debug("ProtocolFactory.__init__")
+        twunnel.logger.log(3, "trace: ProtocolFactory.__init__")
         
         self.address = ""
         self.port = 0
     
     def startedConnecting(self, connector):
-        logger.debug("ProtocolFactory.startedConnecting")
+        twunnel.logger.log(3, "trace: ProtocolFactory.startedConnecting")
     
     def clientConnectionFailed(self, connector, reason):
-        logger.debug("ProtocolFactory.clientConnectionFailed")
+        twunnel.logger.log(3, "trace: ProtocolFactory.clientConnectionFailed")
     
     def clientConnectionLost(self, connector, reason):
-        logger.debug("ProtocolFactory.clientConnectionLost")
+        twunnel.logger.log(3, "trace: ProtocolFactory.clientConnectionLost")
