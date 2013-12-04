@@ -12,8 +12,8 @@ Supports:
 Examples
 --------
 
-https://github.com/jvansteirteghem/twunnel-app
-https://github.com/jvansteirteghem/twunnel/tree/master/examples
+- https://github.com/jvansteirteghem/twunnel-app
+- https://github.com/jvansteirteghem/twunnel/tree/master/examples
 
 License
 -------
