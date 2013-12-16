@@ -28,14 +28,14 @@ class TestTunnelProtocol(protocol.Protocol):
     def tunnelOutputProtocol_connectionMade(self, data):
         pass
 
-class HTTPTunnelTestCase(unittest.TestCase):
+class HTTPSTunnelTestCase(unittest.TestCase):
     def setUp(self):
         self.configuration = \
         {
             "PROXY_SERVERS": 
             [
                 {
-                    "TYPE": "HTTP",
+                    "TYPE": "HTTPS",
                     "ADDRESS": "127.0.0.1",
                     "PORT": 8080,
                     "ACCOUNT": 
@@ -49,7 +49,7 @@ class HTTPTunnelTestCase(unittest.TestCase):
         self.remoteAddress = "127.0.0.1"
         self.remotePort = 80
         
-        self.tunnelOutputProtocolFactory = proxy_server.HTTPTunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort)
+        self.tunnelOutputProtocolFactory = proxy_server.HTTPSTunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort)
         self.tunnelOutputProtocolFactory.tunnelProtocol = TestTunnelProtocol()
         self.tunnelOutputProtocol = self.tunnelOutputProtocolFactory.buildProtocol((self.remoteAddress, self.remotePort))
         self.transport = proto_helpers.StringTransport()
@@ -62,18 +62,18 @@ class HTTPTunnelTestCase(unittest.TestCase):
         value = self.transport.value()
         self.transport.clear()
         
-        self.assertEqual(value, "CONNECT %s:%d HTTP/1.0\r\n\r\n" % (self.remoteAddress, self.remotePort))
+        self.assertEqual(value, "CONNECT %s:%d HTTP/1.1\r\n\r\n" % (self.remoteAddress, self.remotePort))
         
-        self.tunnelOutputProtocol.dataReceived("HTTP/1.0 200 OK\r\n\r\n")
+        self.tunnelOutputProtocol.dataReceived("HTTP/1.1 200 OK\r\n\r\n")
 
-class HTTPTunnelBasicAuthenticationTestCase(unittest.TestCase):
+class HTTPSTunnelBasicAuthenticationTestCase(unittest.TestCase):
     def setUp(self):
         self.configuration = \
         {
             "PROXY_SERVERS": 
             [
                 {
-                    "TYPE": "HTTP",
+                    "TYPE": "HTTPS",
                     "ADDRESS": "127.0.0.1",
                     "PORT": 8080,
                     "ACCOUNT": 
@@ -87,7 +87,7 @@ class HTTPTunnelBasicAuthenticationTestCase(unittest.TestCase):
         self.remoteAddress = "127.0.0.1"
         self.remotePort = 80
         
-        self.tunnelOutputProtocolFactory = proxy_server.HTTPTunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort)
+        self.tunnelOutputProtocolFactory = proxy_server.HTTPSTunnelOutputProtocolFactory(0, self.configuration, self.remoteAddress, self.remotePort)
         self.tunnelOutputProtocolFactory.tunnelProtocol = TestTunnelProtocol()
         self.tunnelOutputProtocol = self.tunnelOutputProtocolFactory.buildProtocol((self.remoteAddress, self.remotePort))
         self.transport = proto_helpers.StringTransport()
@@ -100,9 +100,9 @@ class HTTPTunnelBasicAuthenticationTestCase(unittest.TestCase):
         value = self.transport.value()
         self.transport.clear()
         
-        self.assertEqual(value, "CONNECT %s:%d HTTP/1.0\r\nProxy-Authorization: Basic %s\r\n\r\n" % (self.remoteAddress, self.remotePort, base64.standard_b64encode("%s:%s" % (self.configuration["PROXY_SERVERS"][0]["ACCOUNT"]["NAME"], self.configuration["PROXY_SERVERS"][0]["ACCOUNT"]["PASSWORD"]))))
+        self.assertEqual(value, "CONNECT %s:%d HTTP/1.1\r\nProxy-Authorization: Basic %s\r\n\r\n" % (self.remoteAddress, self.remotePort, base64.standard_b64encode("%s:%s" % (self.configuration["PROXY_SERVERS"][0]["ACCOUNT"]["NAME"], self.configuration["PROXY_SERVERS"][0]["ACCOUNT"]["PASSWORD"]))))
         
-        self.tunnelOutputProtocol.dataReceived("HTTP/1.0 200 OK\r\n\r\n")
+        self.tunnelOutputProtocol.dataReceived("HTTP/1.1 200 OK\r\n\r\n")
 
 class SOCKS5TunnelIPv4TestCase(unittest.TestCase):
     def setUp(self):

@@ -1,12 +1,12 @@
 Twunnel
 =======
 
-A HTTP/SOCKS5 tunnel for Twisted.
+A HTTPS/SOCKS5 tunnel for Twisted.
 
 Supports:
 
-- HTTP
-- HTTP + Basic authentication
+- HTTPS
+- HTTPS + Basic authentication
 - SOCKS5
 
 Examples

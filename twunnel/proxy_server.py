@@ -14,7 +14,7 @@ def setDefaultConfiguration(configuration, keys):
         i = 0
         while i < len(configuration["PROXY_SERVERS"]):
             configuration["PROXY_SERVERS"][i].setdefault("TYPE", "")
-            if configuration["PROXY_SERVERS"][i]["TYPE"] == "HTTP":
+            if configuration["PROXY_SERVERS"][i]["TYPE"] == "HTTPS":
                 configuration["PROXY_SERVERS"][i].setdefault("ADDRESS", "")
                 configuration["PROXY_SERVERS"][i].setdefault("PORT", 0)
                 configuration["PROXY_SERVERS"][i].setdefault("ACCOUNT", {})
@@ -142,8 +142,8 @@ class Tunnel(object):
     def getTunnelOutputProtocolFactoryClass(self, type):
         twunnel.logger.log(3, "trace: Tunnel.getTunnelOutputProtocolFactoryClass")
         
-        if type == "HTTP":
-            return HTTPTunnelOutputProtocolFactory
+        if type == "HTTPS":
+            return HTTPSTunnelOutputProtocolFactory
         else:
             if type == "SOCKS5":
                 return SOCKS5TunnelOutputProtocolFactory
@@ -170,17 +170,17 @@ def createTunnel(configuration):
     
     return tunnel
 
-class HTTPTunnelOutputProtocol(protocol.Protocol):
+class HTTPSTunnelOutputProtocol(protocol.Protocol):
     def __init__(self):
-        twunnel.logger.log(3, "trace: HTTPTunnelOutputProtocol.__init__")
+        twunnel.logger.log(3, "trace: HTTPSTunnelOutputProtocol.__init__")
         
         self.data = ""
         self.dataState = 0
         
     def connectionMade(self):
-        twunnel.logger.log(3, "trace: HTTPTunnelOutputProtocol.connectionMade")
+        twunnel.logger.log(3, "trace: HTTPSTunnelOutputProtocol.connectionMade")
         
-        request = "CONNECT " + str(self.factory.address) + ":" + str(self.factory.port) + " HTTP/1.0\r\n"
+        request = "CONNECT " + str(self.factory.address) + ":" + str(self.factory.port) + " HTTP/1.1\r\n"
         
         if self.factory.configuration["PROXY_SERVERS"][self.factory.i]["ACCOUNT"]["NAME"] != "":
             request = request + "Proxy-Authorization: Basic " + base64.standard_b64encode(self.factory.configuration["PROXY_SERVERS"][self.factory.i]["ACCOUNT"]["NAME"] + ":" + self.factory.configuration["PROXY_SERVERS"][self.factory.i]["ACCOUNT"]["PASSWORD"]) + "\r\n"
@@ -190,10 +190,10 @@ class HTTPTunnelOutputProtocol(protocol.Protocol):
         self.transport.write(request)
         
     def connectionLost(self, reason):
-        twunnel.logger.log(3, "trace: HTTPTunnelOutputProtocol.connectionLost")
+        twunnel.logger.log(3, "trace: HTTPSTunnelOutputProtocol.connectionLost")
     
     def dataReceived(self, data):
-        twunnel.logger.log(3, "trace: HTTPTunnelOutputProtocol.dataReceived")
+        twunnel.logger.log(3, "trace: HTTPSTunnelOutputProtocol.dataReceived")
         
         self.data = self.data + data
         if self.dataState == 0:
@@ -201,7 +201,7 @@ class HTTPTunnelOutputProtocol(protocol.Protocol):
             return
     
     def processDataState0(self):
-        twunnel.logger.log(3, "trace: HTTPTunnelOutputProtocol.processDataState0")
+        twunnel.logger.log(3, "trace: HTTPSTunnelOutputProtocol.processDataState0")
         
         i = self.data.find("\r\n\r\n")
         
@@ -210,15 +210,19 @@ class HTTPTunnelOutputProtocol(protocol.Protocol):
             
         i = i + 4
         
-        dataLines = self.data[:i].split("\r\n")
-        dataLine0 = dataLines[0]
-        dataLine0Values = dataLine0.split(" ", 2)
+        response = self.data[:i]
+        responseLines = response.split("\r\n")
+        responseLine = responseLines[0].split(" ", 2)
         
-        if len(dataLine0Values) != 3:
+        if len(responseLine) != 3:
             self.transport.loseConnection()
             return
         
-        if dataLine0Values[1] != "200":
+        responseVersion = responseLine[0].upper()
+        responseStatus = responseLine[1]
+        responseStatusMessage = responseLine[2]
+        
+        if responseStatus != "200":
             self.transport.loseConnection()
             return
         
@@ -227,11 +231,11 @@ class HTTPTunnelOutputProtocol(protocol.Protocol):
         self.data = ""
         self.dataState = 1
 
-class HTTPTunnelOutputProtocolFactory(protocol.ClientFactory):
-    protocol = HTTPTunnelOutputProtocol
+class HTTPSTunnelOutputProtocolFactory(protocol.ClientFactory):
+    protocol = HTTPSTunnelOutputProtocol
     
     def __init__(self, i, configuration, address, port):
-        twunnel.logger.log(3, "trace: HTTPTunnelOutputProtocolFactory.__init__")
+        twunnel.logger.log(3, "trace: HTTPSTunnelOutputProtocolFactory.__init__")
         
         self.i = i
         self.configuration = configuration
@@ -240,13 +244,13 @@ class HTTPTunnelOutputProtocolFactory(protocol.ClientFactory):
         self.tunnelProtocol = None
     
     def startedConnecting(self, connector):
-        twunnel.logger.log(3, "trace: HTTPTunnelOutputProtocolFactory.startedConnecting")
+        twunnel.logger.log(3, "trace: HTTPSTunnelOutputProtocolFactory.startedConnecting")
     
     def clientConnectionFailed(self, connector, reason):
-        twunnel.logger.log(3, "trace: HTTPTunnelOutputProtocolFactory.clientConnectionFailed")
+        twunnel.logger.log(3, "trace: HTTPSTunnelOutputProtocolFactory.clientConnectionFailed")
     
     def clientConnectionLost(self, connector, reason):
-        twunnel.logger.log(3, "trace: HTTPTunnelOutputProtocolFactory.clientConnectionLost")
+        twunnel.logger.log(3, "trace: HTTPSTunnelOutputProtocolFactory.clientConnectionLost")
 
 class SOCKS5TunnelOutputProtocol(protocol.Protocol):
     def __init__(self):
