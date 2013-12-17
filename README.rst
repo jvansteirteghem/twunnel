@@ -5,9 +5,10 @@ A HTTPS/SOCKS5 tunnel for Twisted.
 
 Supports:
 
-- HTTPS
-- HTTPS + Basic authentication
-- SOCKS5
+- TCP
+- TCP over SSH
+- TCP over WS
+- TCP over WSS
 
 Examples
 --------
