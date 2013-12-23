@@ -144,8 +144,8 @@ class OutputProtocolFactory(protocol.ClientFactory):
         
         self.inputProtocol = inputProtocol
         
-    def buildProtocol(self, *args, **kw):
-        outputProtocol = protocol.ClientFactory.buildProtocol(self, *args, **kw)
+    def buildProtocol(self, *args, **kwargs):
+        outputProtocol = protocol.ClientFactory.buildProtocol(self, *args, **kwargs)
         outputProtocol.inputProtocol = self.inputProtocol
         outputProtocol.inputProtocol.outputProtocol = outputProtocol
         return outputProtocol
@@ -416,8 +416,8 @@ class HTTPSInputProtocolFactory(protocol.ClientFactory):
         self.configuration = configuration
         self.outputProtocolConnectionManager = outputProtocolConnectionManager
     
-    def buildProtocol(self, *args, **kw):
-        inputProtocol = protocol.ClientFactory.buildProtocol(self, *args, **kw)
+    def buildProtocol(self, *args, **kwargs):
+        inputProtocol = protocol.ClientFactory.buildProtocol(self, *args, **kwargs)
         inputProtocol.configuration = self.configuration
         inputProtocol.outputProtocolConnectionManager = self.outputProtocolConnectionManager
         return inputProtocol
@@ -601,8 +601,8 @@ class SOCKS5InputProtocolFactory(protocol.ClientFactory):
         self.configuration = configuration
         self.outputProtocolConnectionManager = outputProtocolConnectionManager
     
-    def buildProtocol(self, *args, **kw):
-        inputProtocol = protocol.ClientFactory.buildProtocol(self, *args, **kw)
+    def buildProtocol(self, *args, **kwargs):
+        inputProtocol = protocol.ClientFactory.buildProtocol(self, *args, **kwargs)
         inputProtocol.configuration = self.configuration
         inputProtocol.outputProtocolConnectionManager = self.outputProtocolConnectionManager
         return inputProtocol
@@ -641,10 +641,10 @@ class SSHChannel(channel.SSHChannel):
     implements(interfaces.IPushProducer)
     name = "direct-tcpip"
     
-    def __init__(self, *args, **kw):
+    def __init__(self, *args, **kwargs):
         twunnel.logger.log(3, "trace: SSHChannel.__init__")
         
-        channel.SSHChannel.__init__(self, *args, **kw)
+        channel.SSHChannel.__init__(self, *args, **kwargs)
         
         self.inputProtocol = None
         self.connectionState = 0

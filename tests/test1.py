@@ -113,12 +113,7 @@ class SOCKS5TunnelIPv4TestCase(unittest.TestCase):
                 {
                     "TYPE": "SOCKS5",
                     "ADDRESS": "127.0.0.1",
-                    "PORT": 1080,
-                    "ACCOUNT": 
-                    {
-                        "NAME": "",
-                        "PASSWORD": ""
-                    }
+                    "PORT": 1080
                 }
             ]
         }
@@ -177,12 +172,7 @@ class SOCKS5TunnelDNTestCase(unittest.TestCase):
                 {
                     "TYPE": "SOCKS5",
                     "ADDRESS": "127.0.0.1",
-                    "PORT": 1080,
-                    "ACCOUNT": 
-                    {
-                        "NAME": "",
-                        "PASSWORD": ""
-                    }
+                    "PORT": 1080
                 }
             ]
         }

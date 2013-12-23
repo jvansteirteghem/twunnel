@@ -30,24 +30,30 @@ def setDefaultConfiguration(configuration, keys):
             configuration["REMOTE_PROXY_SERVER"]["KEY"].setdefault("PRIVATE", {})
             configuration["REMOTE_PROXY_SERVER"]["KEY"]["PRIVATE"].setdefault("FILE", "")
             configuration["REMOTE_PROXY_SERVER"]["KEY"]["PRIVATE"].setdefault("PASSPHRASE", "")
-            configuration["REMOTE_PROXY_SERVER"].setdefault("ACCOUNT", {})
-            configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"].setdefault("NAME", "")
-            configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"].setdefault("PASSWORD", "")
-            configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"].setdefault("KEYS", [])
+            configuration["REMOTE_PROXY_SERVER"].setdefault("ACCOUNTS", [])
             i = 0
-            while i < len(configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"]["KEYS"]):
-                configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"]["KEYS"][i].setdefault("PUBLIC", {})
-                configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"]["KEYS"][i]["PUBLIC"].setdefault("FILE", "")
-                configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"]["KEYS"][i]["PUBLIC"].setdefault("PASSPHRASE", "")
+            while i < len(configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]):
+                configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i].setdefault("NAME", "")
+                configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i].setdefault("PASSWORD", "")
+                configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i].setdefault("KEYS", [])
+                j = 0
+                while j < len(configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["KEYS"]):
+                    configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["KEYS"][j].setdefault("PUBLIC", {})
+                    configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["KEYS"][j]["PUBLIC"].setdefault("FILE", "")
+                    configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["KEYS"][j]["PUBLIC"].setdefault("PASSPHRASE", "")
+                    j = j + 1
+                configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i].setdefault("CONNECTIONS", 0)
                 i = i + 1
-            configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"].setdefault("CONNECTIONS", 0)
         else:
             if configuration["REMOTE_PROXY_SERVER"]["TYPE"] == "WS":
                 configuration["REMOTE_PROXY_SERVER"].setdefault("ADDRESS", "")
                 configuration["REMOTE_PROXY_SERVER"].setdefault("PORT", 0)
-                configuration["REMOTE_PROXY_SERVER"].setdefault("ACCOUNT", {})
-                configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"].setdefault("NAME", "")
-                configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"].setdefault("PASSWORD", "")
+                configuration["REMOTE_PROXY_SERVER"].setdefault("ACCOUNTS", [])
+                i = 0
+                while i < len(configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]):
+                    configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i].setdefault("NAME", "")
+                    configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i].setdefault("PASSWORD", "")
+                    i = i + 1
             else:
                 if configuration["REMOTE_PROXY_SERVER"]["TYPE"] == "WSS":
                     configuration["REMOTE_PROXY_SERVER"].setdefault("ADDRESS", "")
@@ -56,9 +62,12 @@ def setDefaultConfiguration(configuration, keys):
                     configuration["REMOTE_PROXY_SERVER"]["CERTIFICATE"].setdefault("FILE", "")
                     configuration["REMOTE_PROXY_SERVER"]["CERTIFICATE"].setdefault("KEY", {})
                     configuration["REMOTE_PROXY_SERVER"]["CERTIFICATE"]["KEY"].setdefault("FILE", "")
-                    configuration["REMOTE_PROXY_SERVER"].setdefault("ACCOUNT", {})
-                    configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"].setdefault("NAME", "")
-                    configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"].setdefault("PASSWORD", "")
+                    configuration["REMOTE_PROXY_SERVER"].setdefault("ACCOUNTS", [])
+                    i = 0
+                    while i < len(configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]):
+                        configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i].setdefault("NAME", "")
+                        configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i].setdefault("PASSWORD", "")
+                        i = i + 1
 
 def createPort(configuration):
     setDefaultConfiguration(configuration, ["REMOTE_PROXY_SERVER"])
@@ -86,10 +95,10 @@ class SSHChannel(channel.SSHChannel):
     implements(interfaces.IPushProducer)
     name = "direct-tcpip"
     
-    def __init__(self, *args, **kw):
+    def __init__(self, *args, **kwargs):
         twunnel.logger.log(3, "trace: SSHChannel.__init__")
         
-        channel.SSHChannel.__init__(self, *args, **kw)
+        channel.SSHChannel.__init__(self, *args, **kwargs)
         
         self.configuration = None
         self.remoteAddress = ""
@@ -221,6 +230,18 @@ class SSHChannel(channel.SSHChannel):
         
         self.outputProtocol.pauseProducing()
 
+def openSSHChannel(configuration, remoteWindow, remoteMaxPacket, data, avatar):
+    twunnel.logger.log(3, "trace: openSSHChannel")
+    
+    remoteAddressPort, localAddressPort = forwarding.unpackOpen_direct_tcpip(data)
+    
+    sshChannel = SSHChannel(remoteWindow=remoteWindow, remoteMaxPacket=remoteMaxPacket, avatar=avatar)
+    sshChannel.configuration = configuration
+    sshChannel.remoteAddress = remoteAddressPort[0]
+    sshChannel.remotePort = remoteAddressPort[1]
+    
+    return sshChannel
+
 class SSHAvatar(avatar.ConchUser):
     def __init__(self, configuration, i):
         twunnel.logger.log(3, "trace: SSHAvatar.__init__")
@@ -230,19 +251,7 @@ class SSHAvatar(avatar.ConchUser):
         self.configuration = configuration
         self.i = i
         
-        self.channelLookup["direct-tcpip"] = self.openSSHChannel
-    
-    def openSSHChannel(self, remoteWindow, remoteMaxPacket, data, avatar):
-        twunnel.logger.log(3, "trace: SSHAvatar.openSSHChannel")
-        
-        remoteAddressPort, localAddressPort = forwarding.unpackOpen_direct_tcpip(data)
-        
-        sshChannel = SSHChannel(remoteWindow=remoteWindow, remoteMaxPacket=remoteMaxPacket, avatar=avatar)
-        sshChannel.configuration = self.configuration
-        sshChannel.remoteAddress = remoteAddressPort[0]
-        sshChannel.remotePort = remoteAddressPort[1]
-        
-        return sshChannel
+        self.channelLookup["direct-tcpip"] = lambda remoteWindow, remoteMaxPacket, data, avatar: openSSHChannel(self.configuration, remoteWindow, remoteMaxPacket, data, avatar)
     
     def login(self, avatarMind):
         twunnel.logger.log(3, "trace: SSHAvatar.login")
@@ -262,11 +271,11 @@ class SSHUsernamePasswordCredentialsChecker(object):
     def requestAvatarId(self, credentials):
         twunnel.logger.log(3, "trace: SSHUsernamePasswordCredentialsChecker.requestAvatarId")
         
-        i = 0
+        i = -1
         authorized = False
         
         if len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]) == 0:
-            i = 0
+            i = -1
             authorized = True
         
         if authorized == False:
@@ -305,11 +314,11 @@ class SSHPrivateKeyCredentialsChecker(object):
     def requestAvatarId(self, credentials):
         twunnel.logger.log(3, "trace: SSHPrivateKeyCredentialsChecker.requestAvatarId")
         
-        i = 0
+        i = -1
         authorized = False
         
         if len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]) == 0:
-            i = 0
+            i = -1
             authorized = True
         
         if authorized == False:
@@ -357,7 +366,10 @@ class SSHRealm(object):
         self.configuration = configuration
         self.connections = {}
         
-        i = 0
+        i = -1
+        self.connections[i] = 0
+        
+        i = i + 1
         while i < len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]):
             self.connections[i] = 0
             
@@ -369,14 +381,17 @@ class SSHRealm(object):
         i = avatarId
         authorized = False
         
-        if len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]) != 0:
-            if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["CONNECTIONS"] > self.connections[i]:
-                authorized = True
+        if len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]) == 0:
+            authorized = True
         
         if authorized == False:
-            twunnel.logger.log(1, "ERROR_ACCOUNT_CONNECTIONS")
+            if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["CONNECTIONS"] > self.connections[i]:
+                authorized = True
             
-            return defer.fail(UnauthorizedLogin("ERROR_ACCOUNT_CONNECTIONS"))
+            if authorized == False:
+                twunnel.logger.log(1, "ERROR_ACCOUNT_CONNECTIONS")
+                
+                return defer.fail(UnauthorizedLogin("ERROR_ACCOUNT_CONNECTIONS"))
         
         avatar = SSHAvatar(self.configuration, i)
         
