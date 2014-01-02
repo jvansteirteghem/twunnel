@@ -72,20 +72,14 @@ class TunnelProtocol(protocol.Protocol):
 class TunnelProtocolFactory(protocol.ClientFactory):
     protocol = TunnelProtocol
     
-    def __init__(self, i, configuration, address, port, outputProtocolFactory, tunnelOutputProtocolFactory, contextFactory=None, timeout=30, bindAddress=None):
+    def __init__(self, outputProtocolFactory, tunnelOutputProtocolFactory, contextFactory=None):
         twunnel.logger.log(3, "trace: TunnelProtocolFactory.__init__")
         
-        self.i = i
-        self.configuration = configuration
-        self.address = address
-        self.port = port
         self.outputProtocol = None
         self.outputProtocolFactory = outputProtocolFactory
         self.tunnelOutputProtocol = None
         self.tunnelOutputProtocolFactory = tunnelOutputProtocolFactory
         self.contextFactory = contextFactory
-        self.timeout = timeout
-        self.bindAddress = bindAddress
     
     def startedConnecting(self, connector):
         twunnel.logger.log(3, "trace: TunnelProtocolFactory.startedConnecting")
@@ -125,15 +119,15 @@ class Tunnel(object):
             tunnelOutputProtocolFactoryClass = self.getTunnelOutputProtocolFactoryClass(self.configuration["PROXY_SERVERS"][i - 1]["TYPE"])
             tunnelOutputProtocolFactory = tunnelOutputProtocolFactoryClass(i - 1, self.configuration, address, port)
             
-            tunnelProtocolFactory = TunnelProtocolFactory(i - 1, self.configuration, address, port, outputProtocolFactory, tunnelOutputProtocolFactory, contextFactory, timeout, bindAddress)
+            tunnelProtocolFactory = TunnelProtocolFactory(outputProtocolFactory, tunnelOutputProtocolFactory, contextFactory)
             
             i = i - 1
             
             while i > 0:
                 tunnelOutputProtocolFactoryClass = self.getTunnelOutputProtocolFactoryClass(self.configuration["PROXY_SERVERS"][i - 1]["TYPE"])
-                tunnelOutputProtocolFactory = tunnelOutputProtocolFactoryClass(i - 1, self.configuration, address, port)
+                tunnelOutputProtocolFactory = tunnelOutputProtocolFactoryClass(i - 1, self.configuration, self.configuration["PROXY_SERVERS"][i]["ADDRESS"], self.configuration["PROXY_SERVERS"][i]["PORT"])
                 
-                tunnelProtocolFactory = TunnelProtocolFactory(i - 1, self.configuration, self.configuration["PROXY_SERVERS"][i]["ADDRESS"], self.configuration["PROXY_SERVERS"][i]["PORT"], tunnelProtocolFactory, tunnelOutputProtocolFactory, contextFactory, timeout, bindAddress)
+                tunnelProtocolFactory = TunnelProtocolFactory(tunnelProtocolFactory, tunnelOutputProtocolFactory)
                 
                 i = i - 1
             
