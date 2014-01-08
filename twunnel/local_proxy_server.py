@@ -491,17 +491,30 @@ class SOCKS5InputProtocol(protocol.Protocol):
     def processDataState1(self):
         twunnel.logger.log(3, "trace: SOCKS5InputProtocol.processDataState1")
         
+        if len(self.data) < 4:
+            return
+        
         v, c, r, remoteAddressType = struct.unpack('!BBBB', self.data[:4])
         
         # IPv4
         if remoteAddressType == 0x01:
+            if len(self.data) < 10:
+                return
+            
             remoteAddress, self.remotePort = struct.unpack('!IH', self.data[4:10])
             self.remoteAddress = socket.inet_ntoa(struct.pack('!I', remoteAddress))
             self.data = self.data[10:]
         else:
             # DN
             if remoteAddressType == 0x03:
+                if len(self.data) < 5:
+                    return
+                
                 remoteAddressLength = ord(self.data[4])
+                
+                if len(self.data) < 7 + remoteAddressLength:
+                    return
+                
                 self.remoteAddress, self.remotePort = struct.unpack('!%dsH' % remoteAddressLength, self.data[5:])
                 self.data = self.data[7 + remoteAddressLength:]
             # IPv6
