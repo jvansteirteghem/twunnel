@@ -156,11 +156,10 @@ class OutputProtocolFactory(protocol.ClientFactory):
         self.inputProtocol.outputProtocol_connectionFailed(reason)
 
 class OutputProtocolConnection(object):
-    def __init__(self, configuration, i):
+    def __init__(self, configuration):
         twunnel.logger.log(3, "trace: OutputProtocolConnection.__init__")
         
         self.configuration = configuration
-        self.i = i
     
     def connect(self, remoteAddress, remotePort, inputProtocol):
         twunnel.logger.log(3, "trace: OutputProtocolConnection.connect")
@@ -186,15 +185,24 @@ class OutputProtocolConnectionManager(object):
         self.outputProtocolConnections = []
         
         if len(self.configuration["REMOTE_PROXY_SERVERS"]) == 0:
-            outputProtocolConnection = OutputProtocolConnection(self.configuration, 0)
+            configuration = {}
+            configuration["PROXY_SERVERS"] = self.configuration["PROXY_SERVERS"]
+            configuration["LOCAL_PROXY_SERVER"] = self.configuration["LOCAL_PROXY_SERVER"]
+            
+            outputProtocolConnection = OutputProtocolConnection(configuration)
             self.outputProtocolConnections.append(outputProtocolConnection)
         else:
             i = 0
             while i < len(self.configuration["REMOTE_PROXY_SERVERS"]):
-                outputProtocolConnectionClass = self.getOutputProtocolConnectionClass(self.configuration["REMOTE_PROXY_SERVERS"][i]["TYPE"])
+                configuration = {}
+                configuration["PROXY_SERVERS"] = self.configuration["PROXY_SERVERS"]
+                configuration["LOCAL_PROXY_SERVER"] = self.configuration["LOCAL_PROXY_SERVER"]
+                configuration["REMOTE_PROXY_SERVER"] = self.configuration["REMOTE_PROXY_SERVERS"][i]
+                
+                outputProtocolConnectionClass = self.getOutputProtocolConnectionClass(configuration["REMOTE_PROXY_SERVER"]["TYPE"])
                 
                 if outputProtocolConnectionClass is not None:
-                    outputProtocolConnection = outputProtocolConnectionClass(self.configuration, i)
+                    outputProtocolConnection = outputProtocolConnectionClass(configuration)
                     self.outputProtocolConnections.append(outputProtocolConnection)
                 
                 i = i + 1
@@ -746,15 +754,14 @@ class SSHClientTransport(transport.SSHClientTransport):
         twunnel.logger.log(3, "trace: SSHClientTransport.__init__")
         
         self.configuration = None
-        self.i = 0
         
     def verifyHostKey(self, hostKey, fingerprint):
         twunnel.logger.log(3, "trace: SSHClientTransport.verifyHostKey")
         twunnel.logger.log(2, "fingerprint1: " + fingerprint)
-        twunnel.logger.log(2, "fingerprint2: " + self.configuration["REMOTE_PROXY_SERVERS"][self.i]["KEY"]["FINGERPRINT"])
+        twunnel.logger.log(2, "fingerprint2: " + self.configuration["REMOTE_PROXY_SERVER"]["KEY"]["FINGERPRINT"])
         
-        if self.configuration["REMOTE_PROXY_SERVERS"][self.i]["KEY"]["FINGERPRINT"] != "":
-            if self.configuration["REMOTE_PROXY_SERVERS"][self.i]["KEY"]["FINGERPRINT"] != fingerprint:
+        if self.configuration["REMOTE_PROXY_SERVER"]["KEY"]["FINGERPRINT"] != "":
+            if self.configuration["REMOTE_PROXY_SERVER"]["KEY"]["FINGERPRINT"] != fingerprint:
                 twunnel.logger.log(1, "ERROR_KEY_FINGERPRINT")
                 
                 return defer.fail(0)
@@ -764,16 +771,15 @@ class SSHClientTransport(transport.SSHClientTransport):
     def connectionSecure(self):
         twunnel.logger.log(3, "trace: SSHClientTransport.connectionSecure")
         
-        self.requestService(SSHUserAuthClient(self.configuration, self.i))
+        self.requestService(SSHUserAuthClient(self.configuration))
 
 class SSHClientTransportFactory(protocol.ReconnectingClientFactory):
     protocol = SSHClientTransport
     
-    def __init__(self, configuration, i, output):
+    def __init__(self, configuration, output):
         twunnel.logger.log(3, "trace: SSHClientTransportFactory.__init__")
         
         self.configuration = configuration
-        self.i = i
         self.output = output
         
     def buildProtocol(self, address):
@@ -781,7 +787,6 @@ class SSHClientTransportFactory(protocol.ReconnectingClientFactory):
         
         p = protocol.ClientFactory.buildProtocol(self, address)
         p.configuration = self.configuration
-        p.i = self.i
         return p
         
     def startFactory(self):
@@ -812,36 +817,35 @@ class SSHClientTransportFactory(protocol.ReconnectingClientFactory):
         protocol.ReconnectingClientFactory.clientConnectionLost(self, connector, reason)
         
 class SSHUserAuthClient(userauth.SSHUserAuthClient):
-    def __init__(self, configuration, i):
+    def __init__(self, configuration):
         twunnel.logger.log(3, "trace: SSHUserAuthClient.__init__")
         
         self.configuration = configuration
-        self.i = i
-        self.j = -1
+        self.i = -1
         
-        userauth.SSHUserAuthClient.__init__(self, str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ACCOUNT"]["NAME"]), SSHConnection())
+        userauth.SSHUserAuthClient.__init__(self, str(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"]["NAME"]), SSHConnection())
         
     def getPassword(self):
         twunnel.logger.log(3, "trace: SSHUserAuthClient.getPassword")
         
-        return defer.succeed(str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ACCOUNT"]["PASSWORD"]))
+        return defer.succeed(str(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"]["PASSWORD"]))
         
     def getPublicKey(self):
         twunnel.logger.log(3, "trace: SSHUserAuthClient.getPublicKey")
         
-        if self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ACCOUNT"]["PASSWORD"] != "":
+        if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"]["PASSWORD"] != "":
             return None
         
-        self.j = self.j + 1
-        if self.j == len(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ACCOUNT"]["KEYS"]):
+        self.i = self.i + 1
+        if self.i == len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"]["KEYS"]):
             return None
         
-        return keys.Key.fromFile(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ACCOUNT"]["KEYS"][self.j]["PUBLIC"]["FILE"], passphrase=str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ACCOUNT"]["KEYS"][self.j]["PUBLIC"]["PASSPHRASE"])).blob()
+        return keys.Key.fromFile(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"]["KEYS"][self.i]["PUBLIC"]["FILE"], passphrase=str(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"]["KEYS"][self.i]["PUBLIC"]["PASSPHRASE"])).blob()
 
     def getPrivateKey(self):
         twunnel.logger.log(3, "trace: SSHUserAuthClient.getPrivateKey")
         
-        return defer.succeed(keys.Key.fromFile(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ACCOUNT"]["KEYS"][self.j]["PRIVATE"]["FILE"], passphrase=str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ACCOUNT"]["KEYS"][self.j]["PRIVATE"]["PASSPHRASE"])).keyObject)
+        return defer.succeed(keys.Key.fromFile(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"]["KEYS"][self.i]["PRIVATE"]["FILE"], passphrase=str(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"]["KEYS"][self.i]["PRIVATE"]["PASSPHRASE"])).keyObject)
 
 class SSHConnection(connection.SSHConnection):
     def serviceStarted(self):
@@ -863,12 +867,11 @@ class SSHConnection(connection.SSHConnection):
         twunnel.logger.log(2, "connections=" + str(len(self.transport.factory.output.connections)))
 
 class SSHOutputProtocolConnection(object):
-    def __init__(self, configuration, i):
+    def __init__(self, configuration):
         twunnel.logger.log(3, "trace: SSHOutputProtocolConnection.__init__")
         
         self.configuration = configuration
-        self.i = i
-        self.j = -1
+        self.i = -1
         
         self.connections = []
         self.connectors = []
@@ -880,11 +883,11 @@ class SSHOutputProtocolConnection(object):
         if len(self.connections) == 0:
             return
         
-        self.j = self.j + 1
-        if self.j >= len(self.connections):
-            self.j = 0
+        self.i = self.i + 1
+        if self.i >= len(self.connections):
+            self.i = 0
         
-        connection = self.connections[self.j]
+        connection = self.connections[self.i]
         
         inputProtocol.outputProtocol = SSHChannel(conn = connection)
         inputProtocol.outputProtocol.inputProtocol = inputProtocol
@@ -894,12 +897,12 @@ class SSHOutputProtocolConnection(object):
     def startConnection(self):
         twunnel.logger.log(3, "trace: SSHOutputProtocolConnection.startConnection")
         
-        self.factory = SSHClientTransportFactory(self.configuration, self.i, self)
+        self.factory = SSHClientTransportFactory(self.configuration, self)
         
         i = 0
-        while i < self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ACCOUNT"]["CONNECTIONS"]:
+        while i < self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"]["CONNECTIONS"]:
             tunnel = twunnel.proxy_server.createTunnel(self.configuration)
-            tunnel.connect(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"], self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"], self.factory)
+            tunnel.connect(self.configuration["REMOTE_PROXY_SERVER"]["ADDRESS"], self.configuration["REMOTE_PROXY_SERVER"]["PORT"], self.factory)
             
             i = i + 1
     
@@ -924,7 +927,6 @@ class WSOutputProtocol(autobahn.websocket.WebSocketClientProtocol):
         twunnel.logger.log(3, "trace: WSOutputProtocol.__init__")
         
         self.configuration = None
-        self.i = 0
         self.remoteAddress = ""
         self.remotePort = 0
         self.inputProtocol = None
@@ -940,8 +942,8 @@ class WSOutputProtocol(autobahn.websocket.WebSocketClientProtocol):
         request = {}
         request["REMOTE_PROXY_SERVER"] = {}
         request["REMOTE_PROXY_SERVER"]["ACCOUNT"] = {}
-        request["REMOTE_PROXY_SERVER"]["ACCOUNT"]["NAME"] = str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ACCOUNT"]["NAME"])
-        request["REMOTE_PROXY_SERVER"]["ACCOUNT"]["PASSWORD"] = str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ACCOUNT"]["PASSWORD"])
+        request["REMOTE_PROXY_SERVER"]["ACCOUNT"]["NAME"] = str(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"]["NAME"])
+        request["REMOTE_PROXY_SERVER"]["ACCOUNT"]["PASSWORD"] = str(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"]["PASSWORD"])
         request["REMOTE_ADDRESS"] = str(self.remoteAddress)
         request["REMOTE_PORT"] = self.remotePort
         
@@ -1033,13 +1035,12 @@ class WSOutputProtocol(autobahn.websocket.WebSocketClientProtocol):
 class WSOutputProtocolFactory(autobahn.websocket.WebSocketClientFactory):
     protocol = WSOutputProtocol
     
-    def __init__(self, configuration, i, remoteAddress, remotePort, inputProtocol, *args, **kwargs):
+    def __init__(self, configuration, remoteAddress, remotePort, inputProtocol, *args, **kwargs):
         twunnel.logger.log(3, "trace: WSOutputProtocolFactory.__init__")
         
         autobahn.websocket.WebSocketClientFactory.__init__(self, *args, **kwargs)
         
         self.configuration = configuration
-        self.i = i
         self.remoteAddress = remoteAddress
         self.remotePort = remotePort
         self.inputProtocol = inputProtocol
@@ -1047,7 +1048,6 @@ class WSOutputProtocolFactory(autobahn.websocket.WebSocketClientFactory):
     def buildProtocol(self, *args, **kwargs):
         outputProtocol = autobahn.websocket.WebSocketClientFactory.buildProtocol(self, *args, **kwargs)
         outputProtocol.configuration = self.configuration
-        outputProtocol.i = self.i
         outputProtocol.remoteAddress = self.remoteAddress
         outputProtocol.remotePort = self.remotePort
         outputProtocol.inputProtocol = self.inputProtocol
@@ -1087,30 +1087,29 @@ class ClientContextFactory(ssl.ClientContextFactory):
         return certificateOk
 
 class WSOutputProtocolConnection(object):
-    def __init__(self, configuration, i):
+    def __init__(self, configuration):
         twunnel.logger.log(3, "trace: WSOutputProtocolConnection.__init__")
         
         self.configuration = configuration
-        self.i = i
         
     def connect(self, remoteAddress, remotePort, inputProtocol):
         twunnel.logger.log(3, "trace: WSOutputProtocolConnection.connect")
         
-        if self.configuration["REMOTE_PROXY_SERVERS"][self.i]["TYPE"] == "WS":
-            factory = WSOutputProtocolFactory(self.configuration, self.i, remoteAddress, remotePort, inputProtocol, "ws://" + str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"]) + ":" + str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"]))
+        if self.configuration["REMOTE_PROXY_SERVER"]["TYPE"] == "WS":
+            factory = WSOutputProtocolFactory(self.configuration, remoteAddress, remotePort, inputProtocol, "ws://" + str(self.configuration["REMOTE_PROXY_SERVER"]["ADDRESS"]) + ":" + str(self.configuration["REMOTE_PROXY_SERVER"]["PORT"]))
             
             tunnel = twunnel.proxy_server.createTunnel(self.configuration)
-            tunnel.connect(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"], self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"], factory)
+            tunnel.connect(self.configuration["REMOTE_PROXY_SERVER"]["ADDRESS"], self.configuration["REMOTE_PROXY_SERVER"]["PORT"], factory)
         else:
-            factory = WSOutputProtocolFactory(self.configuration, self.i, remoteAddress, remotePort, inputProtocol, "wss://" + str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"]) + ":" + str(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"]))
+            factory = WSOutputProtocolFactory(self.configuration, remoteAddress, remotePort, inputProtocol, "wss://" + str(self.configuration["REMOTE_PROXY_SERVER"]["ADDRESS"]) + ":" + str(self.configuration["REMOTE_PROXY_SERVER"]["PORT"]))
             
-            if self.configuration["REMOTE_PROXY_SERVERS"][self.i]["CERTIFICATE"]["AUTHORITY"]["FILE"] != "":
-                contextFactory = ClientContextFactory(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["CERTIFICATE"]["AUTHORITY"]["FILE"])
+            if self.configuration["REMOTE_PROXY_SERVER"]["CERTIFICATE"]["AUTHORITY"]["FILE"] != "":
+                contextFactory = ClientContextFactory(self.configuration["REMOTE_PROXY_SERVER"]["CERTIFICATE"]["AUTHORITY"]["FILE"])
             else:
                 contextFactory = ssl.ClientContextFactory()
             
             tunnel = twunnel.proxy_server.createTunnel(self.configuration)
-            tunnel.connect(self.configuration["REMOTE_PROXY_SERVERS"][self.i]["ADDRESS"], self.configuration["REMOTE_PROXY_SERVERS"][self.i]["PORT"], factory, contextFactory)
+            tunnel.connect(self.configuration["REMOTE_PROXY_SERVER"]["ADDRESS"], self.configuration["REMOTE_PROXY_SERVER"]["PORT"], factory, contextFactory)
     
     def startConnection(self):
         twunnel.logger.log(3, "trace: WSOutputProtocolConnection.startConnection")

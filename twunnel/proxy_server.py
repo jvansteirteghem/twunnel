@@ -116,16 +116,22 @@ class Tunnel(object):
         else:
             i = len(self.configuration["PROXY_SERVERS"])
             
-            tunnelOutputProtocolFactoryClass = self.getTunnelOutputProtocolFactoryClass(self.configuration["PROXY_SERVERS"][i - 1]["TYPE"])
-            tunnelOutputProtocolFactory = tunnelOutputProtocolFactoryClass(i - 1, self.configuration, address, port)
+            configuration = {}
+            configuration["PROXY_SERVER"] = self.configuration["PROXY_SERVERS"][i - 1]
+            
+            tunnelOutputProtocolFactoryClass = self.getTunnelOutputProtocolFactoryClass(configuration["PROXY_SERVER"]["TYPE"])
+            tunnelOutputProtocolFactory = tunnelOutputProtocolFactoryClass(configuration, address, port)
             
             tunnelProtocolFactory = TunnelProtocolFactory(outputProtocolFactory, tunnelOutputProtocolFactory, contextFactory)
             
             i = i - 1
             
             while i > 0:
-                tunnelOutputProtocolFactoryClass = self.getTunnelOutputProtocolFactoryClass(self.configuration["PROXY_SERVERS"][i - 1]["TYPE"])
-                tunnelOutputProtocolFactory = tunnelOutputProtocolFactoryClass(i - 1, self.configuration, self.configuration["PROXY_SERVERS"][i]["ADDRESS"], self.configuration["PROXY_SERVERS"][i]["PORT"])
+                configuration = {}
+                configuration["PROXY_SERVER"] = self.configuration["PROXY_SERVERS"][i - 1]
+                
+                tunnelOutputProtocolFactoryClass = self.getTunnelOutputProtocolFactoryClass(configuration["PROXY_SERVER"]["TYPE"])
+                tunnelOutputProtocolFactory = tunnelOutputProtocolFactoryClass(configuration, self.configuration["PROXY_SERVERS"][i]["ADDRESS"], self.configuration["PROXY_SERVERS"][i]["PORT"])
                 
                 tunnelProtocolFactory = TunnelProtocolFactory(tunnelProtocolFactory, tunnelOutputProtocolFactory)
                 
@@ -176,8 +182,8 @@ class HTTPSTunnelOutputProtocol(protocol.Protocol):
         
         request = "CONNECT " + str(self.factory.address) + ":" + str(self.factory.port) + " HTTP/1.1\r\n"
         
-        if self.factory.configuration["PROXY_SERVERS"][self.factory.i]["ACCOUNT"]["NAME"] != "":
-            request = request + "Proxy-Authorization: Basic " + base64.standard_b64encode(self.factory.configuration["PROXY_SERVERS"][self.factory.i]["ACCOUNT"]["NAME"] + ":" + self.factory.configuration["PROXY_SERVERS"][self.factory.i]["ACCOUNT"]["PASSWORD"]) + "\r\n"
+        if self.factory.configuration["PROXY_SERVER"]["ACCOUNT"]["NAME"] != "":
+            request = request + "Proxy-Authorization: Basic " + base64.standard_b64encode(self.factory.configuration["PROXY_SERVER"]["ACCOUNT"]["NAME"] + ":" + self.factory.configuration["PROXY_SERVER"]["ACCOUNT"]["PASSWORD"]) + "\r\n"
         
         request = request + "\r\n"
         
@@ -228,10 +234,9 @@ class HTTPSTunnelOutputProtocol(protocol.Protocol):
 class HTTPSTunnelOutputProtocolFactory(protocol.ClientFactory):
     protocol = HTTPSTunnelOutputProtocol
     
-    def __init__(self, i, configuration, address, port):
+    def __init__(self, configuration, address, port):
         twunnel.logger.log(3, "trace: HTTPSTunnelOutputProtocolFactory.__init__")
         
-        self.i = i
         self.configuration = configuration
         self.address = address
         self.port = port
@@ -335,10 +340,9 @@ class SOCKS5TunnelOutputProtocol(protocol.Protocol):
 class SOCKS5TunnelOutputProtocolFactory(protocol.ClientFactory):
     protocol = SOCKS5TunnelOutputProtocol
     
-    def __init__(self, i, configuration, address, port):
+    def __init__(self, configuration, address, port):
         twunnel.logger.log(3, "trace: SOCKS5TunnelOutputProtocolFactory.__init__")
         
-        self.i = i
         self.configuration = configuration
         self.address = address
         self.port = port
