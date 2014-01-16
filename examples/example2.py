@@ -31,7 +31,14 @@ def start_LOCAL_PROXY_SERVER():
         {
             "TYPE": "SOCKS5",
             "ADDRESS": "127.0.0.1",
-            "PORT": 1080
+            "PORT": 1080,
+            "ACCOUNTS":
+            [
+                {
+                    "NAME": "1",
+                    "PASSWORD": "2"
+                }
+            ]
         },
         "REMOTE_PROXY_SERVERS": []
     }
@@ -56,7 +63,12 @@ def connect(port):
             {
                 "TYPE": "SOCKS5",
                 "ADDRESS": "127.0.0.1",
-                "PORT": 1080
+                "PORT": 1080,
+                "ACCOUNT":
+                {
+                    "NAME": "1",
+                    "PASSWORD": "2"
+                }
             }
         ]
     }

@@ -44,12 +44,12 @@ class HTTPSTunnelTestCase(unittest.TestCase):
                 }
             }
         }
-        self.remoteAddress = "127.0.0.1"
-        self.remotePort = 80
+        self.address = "127.0.0.1"
+        self.port = 80
         
-        self.tunnelOutputProtocolFactory = proxy_server.HTTPSTunnelOutputProtocolFactory(self.configuration, self.remoteAddress, self.remotePort)
+        self.tunnelOutputProtocolFactory = proxy_server.HTTPSTunnelOutputProtocolFactory(self.configuration, self.address, self.port)
         self.tunnelOutputProtocolFactory.tunnelProtocol = TestTunnelProtocol()
-        self.tunnelOutputProtocol = self.tunnelOutputProtocolFactory.buildProtocol((self.remoteAddress, self.remotePort))
+        self.tunnelOutputProtocol = self.tunnelOutputProtocolFactory.buildProtocol((self.address, self.port))
         self.transport = proto_helpers.StringTransport()
         self.tunnelOutputProtocol.makeConnection(self.transport)
         
@@ -60,7 +60,7 @@ class HTTPSTunnelTestCase(unittest.TestCase):
         value = self.transport.value()
         self.transport.clear()
         
-        self.assertEqual(value, "CONNECT %s:%d HTTP/1.1\r\n\r\n" % (self.remoteAddress, self.remotePort))
+        self.assertEqual(value, "CONNECT %s:%d HTTP/1.1\r\n\r\n" % (self.address, self.port))
         
         self.tunnelOutputProtocol.dataReceived("HTTP/1.1 200 OK\r\n\r\n")
 
@@ -80,12 +80,12 @@ class HTTPSTunnelBasicAuthenticationTestCase(unittest.TestCase):
                 }
             }
         }
-        self.remoteAddress = "127.0.0.1"
-        self.remotePort = 80
+        self.address = "127.0.0.1"
+        self.port = 80
         
-        self.tunnelOutputProtocolFactory = proxy_server.HTTPSTunnelOutputProtocolFactory(self.configuration, self.remoteAddress, self.remotePort)
+        self.tunnelOutputProtocolFactory = proxy_server.HTTPSTunnelOutputProtocolFactory(self.configuration, self.address, self.port)
         self.tunnelOutputProtocolFactory.tunnelProtocol = TestTunnelProtocol()
-        self.tunnelOutputProtocol = self.tunnelOutputProtocolFactory.buildProtocol((self.remoteAddress, self.remotePort))
+        self.tunnelOutputProtocol = self.tunnelOutputProtocolFactory.buildProtocol((self.address, self.port))
         self.transport = proto_helpers.StringTransport()
         self.tunnelOutputProtocol.makeConnection(self.transport)
         
@@ -96,7 +96,7 @@ class HTTPSTunnelBasicAuthenticationTestCase(unittest.TestCase):
         value = self.transport.value()
         self.transport.clear()
         
-        self.assertEqual(value, "CONNECT %s:%d HTTP/1.1\r\nProxy-Authorization: Basic %s\r\n\r\n" % (self.remoteAddress, self.remotePort, base64.standard_b64encode("%s:%s" % (self.configuration["PROXY_SERVER"]["ACCOUNT"]["NAME"], self.configuration["PROXY_SERVER"]["ACCOUNT"]["PASSWORD"]))))
+        self.assertEqual(value, "CONNECT %s:%d HTTP/1.1\r\nProxy-Authorization: Basic %s\r\n\r\n" % (self.address, self.port, base64.standard_b64encode("%s:%s" % (self.configuration["PROXY_SERVER"]["ACCOUNT"]["NAME"], self.configuration["PROXY_SERVER"]["ACCOUNT"]["PASSWORD"]))))
         
         self.tunnelOutputProtocol.dataReceived("HTTP/1.1 200 OK\r\n\r\n")
 
@@ -108,15 +108,20 @@ class SOCKS5TunnelIPv4TestCase(unittest.TestCase):
             {
                 "TYPE": "SOCKS5",
                 "ADDRESS": "127.0.0.1",
-                "PORT": 1080
+                "PORT": 1080,
+                "ACCOUNT": 
+                {
+                    "NAME": "",
+                    "PASSWORD": ""
+                }
             }
         }
-        self.remoteAddress = "127.0.0.1"
-        self.remotePort = 80
+        self.address = "127.0.0.1"
+        self.port = 80
         
-        self.tunnelOutputProtocolFactory = proxy_server.SOCKS5TunnelOutputProtocolFactory(self.configuration, self.remoteAddress, self.remotePort)
+        self.tunnelOutputProtocolFactory = proxy_server.SOCKS5TunnelOutputProtocolFactory(self.configuration, self.address, self.port)
         self.tunnelOutputProtocolFactory.tunnelProtocol = TestTunnelProtocol()
-        self.tunnelOutputProtocol = self.tunnelOutputProtocolFactory.buildProtocol((self.remoteAddress, self.remotePort))
+        self.tunnelOutputProtocol = self.tunnelOutputProtocolFactory.buildProtocol((self.address, self.port))
         self.transport = proto_helpers.StringTransport()
         self.tunnelOutputProtocol.makeConnection(self.transport)
         
@@ -127,33 +132,33 @@ class SOCKS5TunnelIPv4TestCase(unittest.TestCase):
         value = self.transport.value()
         self.transport.clear()
         
-        v, c, r = struct.unpack('!BBB', value[:3])
+        version, numberOfMethods, method = struct.unpack("!BBB", value[:3])
         
-        self.assertEqual(v, 0x05)
-        self.assertEqual(c, 0x01)
-        self.assertEqual(r, 0x00)
+        self.assertEqual(version, 0x05)
+        self.assertEqual(numberOfMethods, 0x01)
+        self.assertEqual(method, 0x00)
         
-        value = struct.pack('!BB', 0x05, 0x00)
+        value = struct.pack("!BB", 0x05, 0x00)
         
         self.tunnelOutputProtocol.dataReceived(value)
         
         value = self.transport.value()
         self.transport.clear()
         
-        v, c, r, remoteAddressType = struct.unpack('!BBBB', value[:4])
+        version, method, reserved, addressType = struct.unpack("!BBBB", value[:4])
         
-        self.assertEqual(v, 0x05)
-        self.assertEqual(c, 0x01)
-        self.assertEqual(r, 0x00)
-        self.assertEqual(remoteAddressType, 0x01)
+        self.assertEqual(version, 0x05)
+        self.assertEqual(method, 0x01)
+        self.assertEqual(reserved, 0x00)
+        self.assertEqual(addressType, 0x01)
         
-        remoteAddress, remotePort = struct.unpack('!IH', value[4:10])
-        remoteAddress = socket.inet_ntoa(struct.pack('!I', remoteAddress))
+        address, port = struct.unpack("!IH", value[4:10])
+        address = socket.inet_ntoa(struct.pack("!I", address))
         
-        self.assertEqual(remoteAddress, self.remoteAddress)
-        self.assertEqual(remotePort, self.remotePort)
+        self.assertEqual(address, self.address)
+        self.assertEqual(port, self.port)
         
-        value = struct.pack('!BBBBIH', 0x05, 0x00, 0x00, 0x01, 0, 0)
+        value = struct.pack("!BBBBIH", 0x05, 0x00, 0x00, 0x01, 0, 0)
         
         self.tunnelOutputProtocol.dataReceived(value)
 
@@ -165,15 +170,20 @@ class SOCKS5TunnelDNTestCase(unittest.TestCase):
             {
                 "TYPE": "SOCKS5",
                 "ADDRESS": "127.0.0.1",
-                "PORT": 1080
+                "PORT": 1080,
+                "ACCOUNT": 
+                {
+                    "NAME": "",
+                    "PASSWORD": ""
+                }
             }
         }
-        self.remoteAddress = "localhost"
-        self.remotePort = 80
+        self.address = "localhost"
+        self.port = 80
         
-        self.tunnelOutputProtocolFactory = proxy_server.SOCKS5TunnelOutputProtocolFactory(self.configuration, self.remoteAddress, self.remotePort)
+        self.tunnelOutputProtocolFactory = proxy_server.SOCKS5TunnelOutputProtocolFactory(self.configuration, self.address, self.port)
         self.tunnelOutputProtocolFactory.tunnelProtocol = TestTunnelProtocol()
-        self.tunnelOutputProtocol = self.tunnelOutputProtocolFactory.buildProtocol((self.remoteAddress, self.remotePort))
+        self.tunnelOutputProtocol = self.tunnelOutputProtocolFactory.buildProtocol((self.address, self.port))
         self.transport = proto_helpers.StringTransport()
         self.tunnelOutputProtocol.makeConnection(self.transport)
         
@@ -184,33 +194,33 @@ class SOCKS5TunnelDNTestCase(unittest.TestCase):
         value = self.transport.value()
         self.transport.clear()
         
-        v, c, r = struct.unpack('!BBB', value[:3])
+        version, numberOfMethods, method = struct.unpack("!BBB", value[:3])
         
-        self.assertEqual(v, 0x05)
-        self.assertEqual(c, 0x01)
-        self.assertEqual(r, 0x00)
+        self.assertEqual(version, 0x05)
+        self.assertEqual(numberOfMethods, 0x01)
+        self.assertEqual(method, 0x00)
         
-        value = struct.pack('!BB', 0x05, 0x00)
+        value = struct.pack("!BB", 0x05, 0x00)
         
         self.tunnelOutputProtocol.dataReceived(value)
         
         value = self.transport.value()
         self.transport.clear()
         
-        v, c, r, remoteAddressType = struct.unpack('!BBBB', value[:4])
+        version, method, reserved, addressType = struct.unpack("!BBBB", value[:4])
         
-        self.assertEqual(v, 0x05)
-        self.assertEqual(c, 0x01)
-        self.assertEqual(r, 0x00)
-        self.assertEqual(remoteAddressType, 0x03)
+        self.assertEqual(version, 0x05)
+        self.assertEqual(method, 0x01)
+        self.assertEqual(reserved, 0x00)
+        self.assertEqual(addressType, 0x03)
         
-        remoteAddressLength = ord(value[4])
-        remoteAddress, remotePort = struct.unpack('!%dsH' % remoteAddressLength, value[5:])
+        addressLength, = struct.unpack("!B", value[4])
+        address, port = struct.unpack("!%dsH" % addressLength, value[5:])
         
-        self.assertEqual(remoteAddress, self.remoteAddress)
-        self.assertEqual(remotePort, self.remotePort)
+        self.assertEqual(address, self.address)
+        self.assertEqual(port, self.port)
         
-        value = struct.pack('!BBBBIH', 0x05, 0x00, 0x00, 0x01, 0, 0)
+        value = struct.pack("!BBBBIH", 0x05, 0x00, 0x00, 0x01, 0, 0)
         
         self.tunnelOutputProtocol.dataReceived(value)
 

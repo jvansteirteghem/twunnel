@@ -24,6 +24,9 @@ def setDefaultConfiguration(configuration, keys):
                 if configuration["PROXY_SERVERS"][i]["TYPE"] == "SOCKS5":
                     configuration["PROXY_SERVERS"][i].setdefault("ADDRESS", "")
                     configuration["PROXY_SERVERS"][i].setdefault("PORT", 0)
+                    configuration["PROXY_SERVERS"][i].setdefault("ACCOUNT", {})
+                    configuration["PROXY_SERVERS"][i]["ACCOUNT"].setdefault("NAME", "")
+                    configuration["PROXY_SERVERS"][i]["ACCOUNT"].setdefault("PASSWORD", "")
             i = i + 1
 
 class TunnelProtocol(protocol.Protocol):
@@ -211,6 +214,9 @@ class HTTPSTunnelOutputProtocol(protocol.Protocol):
         i = i + 4
         
         response = self.data[:i]
+        
+        self.data = self.data[i:]
+        
         responseLines = response.split("\r\n")
         responseLine = responseLines[0].split(" ", 2)
         
@@ -226,7 +232,7 @@ class HTTPSTunnelOutputProtocol(protocol.Protocol):
             self.transport.loseConnection()
             return
         
-        self.factory.tunnelProtocol.tunnelOutputProtocol_connectionMade(self.data[i:])
+        self.factory.tunnelProtocol.tunnelOutputProtocol_connectionMade(self.data)
         
         self.data = ""
         self.dataState = 1
@@ -261,9 +267,16 @@ class SOCKS5TunnelOutputProtocol(protocol.Protocol):
     def connectionMade(self):
         twunnel.logger.log(3, "trace: SOCKS5TunnelOutputProtocol.connectionMade")
         
-        request = struct.pack("!BBB", 0x05, 0x01, 0x00)
-        
-        self.transport.write(request)
+        if self.factory.configuration["PROXY_SERVER"]["ACCOUNT"]["NAME"] != "":
+            request = struct.pack("!BBB", 0x05, 0x01, 0x02)
+            self.transport.write(request)
+            
+            self.dataState = 0
+        else:
+            request = struct.pack("!BBB", 0x05, 0x01, 0x00)
+            self.transport.write(request)
+            
+            self.dataState = 1
     
     def connectionLost(self, reason):
         twunnel.logger.log(3, "trace: SOCKS5TunnelOutputProtocol.connectionLost")
@@ -275,9 +288,11 @@ class SOCKS5TunnelOutputProtocol(protocol.Protocol):
         if self.dataState == 0:
             self.processDataState0()
             return
-        
         if self.dataState == 1:
             self.processDataState1()
+            return
+        if self.dataState == 2:
+            self.processDataState2()
             return
     
     def processDataState0(self):
@@ -286,7 +301,37 @@ class SOCKS5TunnelOutputProtocol(protocol.Protocol):
         if len(self.data) < 2:
             return
         
-        if ord(self.data[0]) != 0x05:
+        version, method = struct.unpack("!BB", self.data[:2])
+        
+        self.data = self.data[2:]
+        
+        if method != 0x02:
+            self.transport.loseConnection()
+            return
+        
+        name = self.factory.configuration["PROXY_SERVER"]["ACCOUNT"]["NAME"]
+        nameLength = len(name)
+        password = self.factory.configuration["PROXY_SERVER"]["ACCOUNT"]["PASSWORD"]
+        passwordLength = len(password)
+        
+        response = struct.pack("!B", 0x01)
+        response = response + struct.pack("!B%ds" % nameLength, nameLength, name)
+        response = response + struct.pack("!B%ds" % passwordLength, passwordLength, password)
+        self.transport.write(response)
+        
+        self.dataState = 1
+    
+    def processDataState1(self):
+        twunnel.logger.log(3, "trace: SOCKS5TunnelOutputProtocol.processDataState1")
+        
+        if len(self.data) < 2:
+            return
+        
+        version, status = struct.unpack("!BB", self.data[:2])
+        
+        self.data = self.data[2:]
+        
+        if status != 0x00:
             self.transport.loseConnection()
             return
         
@@ -300,7 +345,7 @@ class SOCKS5TunnelOutputProtocol(protocol.Protocol):
         request = struct.pack("!BBB", 0x05, 0x01, 0x00)
         
         if addressType == 0x01:
-            address = struct.unpack("!I", socket.inet_aton(self.factory.address))[0]
+            address, = struct.unpack("!I", socket.inet_aton(self.factory.address))
             request = request + struct.pack("!BI", 0x01, address)
         else:
             if addressType == 0x03:
@@ -312,30 +357,51 @@ class SOCKS5TunnelOutputProtocol(protocol.Protocol):
                 return
         
         request = request + struct.pack("!H", self.factory.port)
-        
         self.transport.write(request)
         
-        self.data = ""
-        self.dataState = 1
-    
-    def processDataState1(self):
-        twunnel.logger.log(3, "trace: SOCKS5TunnelOutputProtocol.processDataState1")
-        
-        if len(self.data) < 10:
-            return
-        
-        if ord(self.data[0]) != 0x05:
-            self.transport.loseConnection()
-            return
-        
-        if ord(self.data[1]) != 0x00:
-            self.transport.loseConnection()
-            return
-        
-        self.factory.tunnelProtocol.tunnelOutputProtocol_connectionMade(self.data[10:])
-        
-        self.data = ""
         self.dataState = 2
+    
+    def processDataState2(self):
+        twunnel.logger.log(3, "trace: SOCKS5TunnelOutputProtocol.processDataState2")
+        
+        if len(self.data) < 4:
+            return
+        
+        version, status, reserved, addressType = struct.unpack("!BBBB", self.data[:4])
+        
+        if status != 0x00:
+            self.transport.loseConnection()
+            return
+        
+        if addressType == 0x01:
+            if len(self.data) < 10:
+                return
+            
+            address, port = struct.unpack("!IH", self.data[4:10])
+            address = socket.inet_ntoa(struct.pack("!I", address))
+            
+            self.data = self.data[10:]
+        else:
+            if addressType == 0x03:
+                if len(self.data) < 5:
+                    return
+                
+                addressLength, = struct.unpack("!B", self.data[4])
+                
+                if len(self.data) < 7 + addressLength:
+                    return
+                
+                address, port = struct.unpack("!%dsH" % addressLength, self.data[5:])
+                
+                self.data = self.data[7 + addressLength:]
+            else:
+                self.transport.loseConnection()
+                return
+        
+        self.factory.tunnelProtocol.tunnelOutputProtocol_connectionMade(self.data)
+        
+        self.data = ""
+        self.dataState = 3
 
 class SOCKS5TunnelOutputProtocolFactory(protocol.ClientFactory):
     protocol = SOCKS5TunnelOutputProtocol

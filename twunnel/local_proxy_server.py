@@ -27,6 +27,12 @@ def setDefaultConfiguration(configuration, keys):
             if configuration["LOCAL_PROXY_SERVER"]["TYPE"] == "SOCKS5":
                 configuration["LOCAL_PROXY_SERVER"].setdefault("ADDRESS", "")
                 configuration["LOCAL_PROXY_SERVER"].setdefault("PORT", 0)
+                configuration["LOCAL_PROXY_SERVER"].setdefault("ACCOUNTS", [])
+                i = 0
+                while i < len(configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"]):
+                    configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"][i].setdefault("NAME", "")
+                    configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"][i].setdefault("PASSWORD", "")
+                    i = i + 1
     
     if "REMOTE_PROXY_SERVERS" in keys:
         configuration.setdefault("REMOTE_PROXY_SERVERS", [])
@@ -301,6 +307,9 @@ class HTTPSInputProtocol(protocol.Protocol):
         i = i + 4
         
         request = self.data[:i]
+        
+        self.data = self.data[i:]
+        
         requestLines = request.split("\r\n")
         requestLine = requestLines[0].split(" ", 2)
         
@@ -317,8 +326,6 @@ class HTTPSInputProtocol(protocol.Protocol):
         requestVersion = requestLine[2].upper()
         
         if requestMethod == "CONNECT":
-            self.data = self.data[i:]
-            
             addressPort = requestURI.split(":", 2)
             
             self.remoteAddress = addressPort[0]
@@ -359,7 +366,7 @@ class HTTPSInputProtocol(protocol.Protocol):
             self.transport.write(response)
             
             self.outputProtocol.inputProtocol_connectionMade()
-            if self.data != "":
+            if len(self.data) > 0:
                 self.outputProtocol.inputProtocol_dataReceived(self.data)
             
             self.data = ""
@@ -486,48 +493,127 @@ class SOCKS5InputProtocol(protocol.Protocol):
         if self.dataState == 2:
             self.processDataState2()
             return
+        if self.dataState == 3:
+            self.processDataState3()
+            return
     
     def processDataState0(self):
         twunnel.logger.log(3, "trace: SOCKS5InputProtocol.processDataState0")
         
-        # no authentication
-        self.transport.write(struct.pack('!BB', 0x05, 0x00))
+        if len(self.data) < 2:
+            return
         
-        self.data = ""
-        self.dataState = 1
+        version, numberOfMethods = struct.unpack("!BB", self.data[:2])
+        
+        if len(self.data) < 2 + numberOfMethods:
+            return
+        
+        methods = struct.unpack("!%dB" % numberOfMethods, self.data[2:2 + numberOfMethods])
+        
+        self.data = self.data[2 + numberOfMethods:]
+        
+        if 0x02 in methods:
+            response = struct.pack("!BB", 0x05, 0x02)
+            self.transport.write(response)
+            
+            self.dataState = 1
+        else:
+            if 0x00 in methods:
+                if len(self.configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"]) == 0:
+                    response = struct.pack("!BB", 0x05, 0x00)
+                    self.transport.write(response)
+                    
+                    self.dataState = 2
+                else:
+                    response = struct.pack("!BB", 0x05, 0xFF)
+                    self.transport.write(response)
+                    self.transport.loseConnection()
+            else:
+                response = struct.pack("!BB", 0x05, 0xFF)
+                self.transport.write(response)
+                self.transport.loseConnection()
     
     def processDataState1(self):
         twunnel.logger.log(3, "trace: SOCKS5InputProtocol.processDataState1")
         
+        if len(self.data) < 2:
+            return
+        
+        version, nameLength = struct.unpack("!BB", self.data[:2])
+        
+        if len(self.data) < 2 + nameLength:
+            return
+        
+        name, = struct.unpack("!%ds" % nameLength, self.data[2:2 + nameLength])
+        
+        if len(self.data) < 2 + nameLength + 1:
+            return
+        
+        passwordLength, = struct.unpack("!B", self.data[2 + nameLength])
+        
+        if len(self.data) < 2 + nameLength + 1 + passwordLength:
+            return
+        
+        password, = struct.unpack("!%ds" % passwordLength, self.data[2 + nameLength + 1:2 + nameLength + 1 + passwordLength])
+        
+        self.data = self.data[2 + nameLength + 1 + passwordLength:] 
+        
+        authorized = False;
+        
+        if len(self.configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"]) == 0:
+            authorized = True
+        
+        if authorized == False:
+            i = 0
+            while i < len(self.configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"]):
+                if self.configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"][i]["NAME"] == name and self.configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"][i]["PASSWORD"] == password:
+                    authorized = True
+                    break
+                
+                i = i + 1
+        
+        if authorized == False:
+            response = struct.pack("!BB", 0x05, 0x01)
+            self.transport.write(response)
+            self.transport.loseConnection()
+            return
+        
+        response = struct.pack("!BB", 0x05, 0x00)
+        self.transport.write(response)
+        
+        self.dataState = 2
+    
+    def processDataState2(self):
+        twunnel.logger.log(3, "trace: SOCKS5InputProtocol.processDataState2")
+        
         if len(self.data) < 4:
             return
         
-        v, c, r, remoteAddressType = struct.unpack('!BBBB', self.data[:4])
+        version, method, reserved, remoteAddressType = struct.unpack("!BBBB", self.data[:4])
         
-        # IPv4
         if remoteAddressType == 0x01:
             if len(self.data) < 10:
                 return
             
-            remoteAddress, self.remotePort = struct.unpack('!IH', self.data[4:10])
-            self.remoteAddress = socket.inet_ntoa(struct.pack('!I', remoteAddress))
+            self.remoteAddress, self.remotePort = struct.unpack("!IH", self.data[4:10])
+            self.remoteAddress = socket.inet_ntoa(struct.pack("!I", self.remoteAddress))
+            
             self.data = self.data[10:]
         else:
-            # DN
             if remoteAddressType == 0x03:
                 if len(self.data) < 5:
                     return
                 
-                remoteAddressLength = ord(self.data[4])
+                remoteAddressLength, = struct.unpack("!B", self.data[4])
                 
                 if len(self.data) < 7 + remoteAddressLength:
                     return
                 
-                self.remoteAddress, self.remotePort = struct.unpack('!%dsH' % remoteAddressLength, self.data[5:])
+                self.remoteAddress, self.remotePort = struct.unpack("!%dsH" % remoteAddressLength, self.data[5:])
+                
                 self.data = self.data[7 + remoteAddressLength:]
-            # IPv6
             else:
-                response = struct.pack('!BBBBIH', 0x05, 0x08, 0x00, 0x01, 0, 0)
+                response = struct.pack("!BBBBIH", 0x05, 0x08, 0x00, 0x01, 0, 0)
                 self.transport.write(response)
                 self.transport.loseConnection()
                 return
@@ -535,17 +621,16 @@ class SOCKS5InputProtocol(protocol.Protocol):
         twunnel.logger.log(2, "remoteAddress: " + self.remoteAddress)
         twunnel.logger.log(2, "remotePort: " + str(self.remotePort))
         
-        # connect
-        if c == 0x01:
+        if method == 0x01:
             self.outputProtocolConnectionManager.connect(self.remoteAddress, self.remotePort, self)
         else:
-            response = struct.pack('!BBBBIH', 0x05, 0x07, 0x00, 0x01, 0, 0)
+            response = struct.pack("!BBBBIH", 0x05, 0x07, 0x00, 0x01, 0, 0)
             self.transport.write(response)
             self.transport.loseConnection()
             return
         
-    def processDataState2(self):
-        twunnel.logger.log(3, "trace: SOCKS5InputProtocol.processDataState2")
+    def processDataState3(self):
+        twunnel.logger.log(3, "trace: SOCKS5InputProtocol.processDataState3")
         
         self.outputProtocol.inputProtocol_dataReceived(self.data)
         
@@ -557,13 +642,15 @@ class SOCKS5InputProtocol(protocol.Protocol):
         if self.connectionState == 1:
             self.transport.registerProducer(self.outputProtocol, True)
             
-            response = struct.pack('!BBBBIH', 0x05, 0x00, 0x00, 0x01, 0, 0)
+            response = struct.pack("!BBBBIH", 0x05, 0x00, 0x00, 0x01, 0, 0)
             self.transport.write(response)
             
             self.outputProtocol.inputProtocol_connectionMade()
+            if len(self.data) > 0:
+                self.outputProtocol.inputProtocol_dataReceived(self.data)
             
             self.data = ""
-            self.dataState = 2
+            self.dataState = 3
         else:
             if self.connectionState == 2:
                 self.outputProtocol.inputProtocol_connectionLost(None)
@@ -572,7 +659,7 @@ class SOCKS5InputProtocol(protocol.Protocol):
         twunnel.logger.log(3, "trace: SOCKS5InputProtocol.outputProtocol_connectionFailed")
         
         if self.connectionState == 1:
-            response = struct.pack('!BBBBIH', 0x05, 0x05, 0x00, 0x01, 0, 0)
+            response = struct.pack("!BBBBIH", 0x05, 0x05, 0x00, 0x01, 0, 0)
             self.transport.write(response)
             self.transport.loseConnection()
         
