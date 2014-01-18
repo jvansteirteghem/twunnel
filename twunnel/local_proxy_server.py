@@ -5,7 +5,7 @@ from twisted.conch.ssh import channel, connection, forwarding, keys, transport, 
 from twisted.internet import base, defer, interfaces, protocol, reactor, ssl, tcp
 from twisted.internet.abstract import isIPAddress, isIPv6Address
 from zope.interface import implements
-import autobahn.websocket
+import autobahn.twisted.websocket
 import base64
 import json
 import OpenSSL
@@ -1007,7 +1007,7 @@ class SSHOutputProtocolConnection(object):
 
 # WS
 
-class WSOutputProtocol(autobahn.websocket.WebSocketClientProtocol):
+class WSOutputProtocol(autobahn.twisted.websocket.WebSocketClientProtocol):
     implements(interfaces.IPushProducer)
     
     def __init__(self):
@@ -1119,13 +1119,13 @@ class WSOutputProtocol(autobahn.websocket.WebSocketClientProtocol):
         if self.connectionState == 1:
             self.transport.stopProducing()
 
-class WSOutputProtocolFactory(autobahn.websocket.WebSocketClientFactory):
+class WSOutputProtocolFactory(autobahn.twisted.websocket.WebSocketClientFactory):
     protocol = WSOutputProtocol
     
     def __init__(self, configuration, remoteAddress, remotePort, inputProtocol, *args, **kwargs):
         twunnel.logger.log(3, "trace: WSOutputProtocolFactory.__init__")
         
-        autobahn.websocket.WebSocketClientFactory.__init__(self, *args, **kwargs)
+        autobahn.twisted.websocket.WebSocketClientFactory.__init__(self, *args, **kwargs)
         
         self.configuration = configuration
         self.remoteAddress = remoteAddress
@@ -1133,7 +1133,7 @@ class WSOutputProtocolFactory(autobahn.websocket.WebSocketClientFactory):
         self.inputProtocol = inputProtocol
         
     def buildProtocol(self, *args, **kwargs):
-        outputProtocol = autobahn.websocket.WebSocketClientFactory.buildProtocol(self, *args, **kwargs)
+        outputProtocol = autobahn.twisted.websocket.WebSocketClientFactory.buildProtocol(self, *args, **kwargs)
         outputProtocol.configuration = self.configuration
         outputProtocol.remoteAddress = self.remoteAddress
         outputProtocol.remotePort = self.remotePort

@@ -30,7 +30,7 @@ requires = [
     'pycrypto', 
     'pyasn1', 
     'twisted', 
-    'autobahn'
+    'autobahn>=0.7.0'
 ]
 
 classifiers = [
@@ -47,7 +47,7 @@ classifiers = [
 
 setup(
     name='twunnel',
-    version='0.8.0',
+    version='0.8.1',
     description='A HTTPS/SOCKS5 tunnel for Twisted.',
     long_description=readme,
     packages=packages,

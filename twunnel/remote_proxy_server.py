@@ -8,7 +8,7 @@ from twisted.cred import checkers, credentials, portal
 from twisted.cred.error import UnauthorizedLogin
 from twisted.internet import defer, interfaces, reactor, ssl, tcp
 from zope.interface import implements
-import autobahn.websocket
+import autobahn.twisted.websocket
 import json
 import twunnel.local_proxy_server
 import twunnel.logger
@@ -453,7 +453,7 @@ class WSOutputProtocol(twunnel.local_proxy_server.OutputProtocol):
 class WSOutputProtocolFactory(twunnel.local_proxy_server.OutputProtocolFactory):
     protocol = WSOutputProtocol
 
-class WSInputProtocol(autobahn.websocket.WebSocketServerProtocol):
+class WSInputProtocol(autobahn.twisted.websocket.WebSocketServerProtocol):
     implements(interfaces.IPushProducer)
     
     def __init__(self):
@@ -605,18 +605,18 @@ class WSInputProtocol(autobahn.websocket.WebSocketServerProtocol):
         if self.connectionState == 1:
             self.transport.stopProducing()
 
-class WSInputProtocolFactory(autobahn.websocket.WebSocketServerFactory):
+class WSInputProtocolFactory(autobahn.twisted.websocket.WebSocketServerFactory):
     protocol = WSInputProtocol
     
     def __init__(self, configuration, *args, **kwargs):
         twunnel.logger.log(3, "trace: WSInputProtocolFactory.__init__")
         
-        autobahn.websocket.WebSocketServerFactory.__init__(self, *args, **kwargs)
+        autobahn.twisted.websocket.WebSocketServerFactory.__init__(self, *args, **kwargs)
         
         self.configuration = configuration
     
     def buildProtocol(self, *args, **kwargs):
-        inputProtocol = autobahn.websocket.WebSocketServerFactory.buildProtocol(self, *args, **kwargs)
+        inputProtocol = autobahn.twisted.websocket.WebSocketServerFactory.buildProtocol(self, *args, **kwargs)
         inputProtocol.configuration = self.configuration
         return inputProtocol
 

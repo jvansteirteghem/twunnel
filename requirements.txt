@@ -3,4 +3,4 @@ pyopenssl
 pycrypto
 pyasn1
 twisted
-autobahn
+autobahn>=0.7.0
