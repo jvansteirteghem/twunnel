@@ -132,11 +132,13 @@ class SOCKS5TunnelIPv4TestCase(unittest.TestCase):
         value = self.transport.value()
         self.transport.clear()
         
-        version, numberOfMethods, method = struct.unpack("!BBB", value[:3])
+        version, numberOfMethods = struct.unpack("!BB", value[:2])
+        methods = struct.unpack("!%dB" % numberOfMethods, value[2:2 + numberOfMethods])
         
         self.assertEqual(version, 0x05)
-        self.assertEqual(numberOfMethods, 0x01)
-        self.assertEqual(method, 0x00)
+        self.assertEqual(numberOfMethods, 0x02)
+        self.assertEqual(methods[0], 0x00)
+        self.assertEqual(methods[1], 0x02)
         
         value = struct.pack("!BB", 0x05, 0x00)
         
@@ -194,11 +196,13 @@ class SOCKS5TunnelDNTestCase(unittest.TestCase):
         value = self.transport.value()
         self.transport.clear()
         
-        version, numberOfMethods, method = struct.unpack("!BBB", value[:3])
+        version, numberOfMethods = struct.unpack("!BB", value[:2])
+        methods = struct.unpack("!%dB" % numberOfMethods, value[2:2 + numberOfMethods])
         
         self.assertEqual(version, 0x05)
-        self.assertEqual(numberOfMethods, 0x01)
-        self.assertEqual(method, 0x00)
+        self.assertEqual(numberOfMethods, 0x02)
+        self.assertEqual(methods[0], 0x00)
+        self.assertEqual(methods[1], 0x02)
         
         value = struct.pack("!BB", 0x05, 0x00)
         

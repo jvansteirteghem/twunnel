@@ -290,11 +290,11 @@ class HTTPSInputProtocol(protocol.Protocol):
         
         self.data = self.data + data
         if self.dataState == 0:
-            self.processDataState0()
-            return
+            if self.processDataState0():
+                return
         if self.dataState == 1:
-            self.processDataState1()
-            return
+            if self.processDataState1():
+                return
     
     def processDataState0(self):
         twunnel.logger.log(3, "trace: HTTPSInputProtocol.processDataState0")
@@ -302,7 +302,7 @@ class HTTPSInputProtocol(protocol.Protocol):
         i = self.data.find("\r\n\r\n")
         
         if i == -1:
-            return
+            return True
         
         i = i + 4
         
@@ -319,7 +319,8 @@ class HTTPSInputProtocol(protocol.Protocol):
             
             self.transport.write(response)
             self.transport.loseConnection()
-            return
+            
+            return True
         
         requestMethod = requestLine[0].upper()
         requestURI = requestLine[1]
@@ -333,6 +334,13 @@ class HTTPSInputProtocol(protocol.Protocol):
                 self.remotePort = 443
             else:
                 self.remotePort = int(addressPort[1])
+            
+            twunnel.logger.log(2, "remoteAddress: " + self.remoteAddress)
+            twunnel.logger.log(2, "remotePort: " + str(self.remotePort))
+            
+            self.outputProtocolConnectionManager.connect(self.remoteAddress, self.remotePort, self)
+            
+            return True
         else:
             response = "HTTP/1.1 405 Method Not Allowed\r\n"
             response = response + "Allow: CONNECT\r\n"
@@ -340,12 +348,8 @@ class HTTPSInputProtocol(protocol.Protocol):
             
             self.transport.write(response)
             self.transport.loseConnection()
-            return
-        
-        twunnel.logger.log(2, "remoteAddress: " + self.remoteAddress)
-        twunnel.logger.log(2, "remotePort: " + str(self.remotePort))
-        
-        self.outputProtocolConnectionManager.connect(self.remoteAddress, self.remotePort, self)
+            
+            return True
         
     def processDataState1(self):
         twunnel.logger.log(3, "trace: HTTPSInputProtocol.processDataState1")
@@ -353,6 +357,8 @@ class HTTPSInputProtocol(protocol.Protocol):
         self.outputProtocol.inputProtocol_dataReceived(self.data)
         
         self.data = ""
+        
+        return True
         
     def outputProtocol_connectionMade(self):
         twunnel.logger.log(3, "trace: HTTPSInputProtocol.outputProtocol_connectionMade")
@@ -485,149 +491,176 @@ class SOCKS5InputProtocol(protocol.Protocol):
         
         self.data = self.data + data
         if self.dataState == 0:
-            self.processDataState0()
-            return
+            if self.processDataState0():
+                return
         if self.dataState == 1:
-            self.processDataState1()
-            return
+            if self.processDataState1():
+                return
         if self.dataState == 2:
-            self.processDataState2()
-            return
+            if self.processDataState2():
+                return
         if self.dataState == 3:
-            self.processDataState3()
-            return
+            if self.processDataState3():
+                return
     
     def processDataState0(self):
         twunnel.logger.log(3, "trace: SOCKS5InputProtocol.processDataState0")
         
         if len(self.data) < 2:
-            return
+            return True
         
         version, numberOfMethods = struct.unpack("!BB", self.data[:2])
         
         if len(self.data) < 2 + numberOfMethods:
-            return
+            return True
         
         methods = struct.unpack("!%dB" % numberOfMethods, self.data[2:2 + numberOfMethods])
         
         self.data = self.data[2 + numberOfMethods:]
         
-        if 0x02 in methods:
-            response = struct.pack("!BB", 0x05, 0x02)
-            self.transport.write(response)
-            
-            self.dataState = 1
+        supportedMethods = []
+        if len(self.configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"]) == 0:
+            supportedMethods.append(0x00)
         else:
-            if 0x00 in methods:
-                if len(self.configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"]) == 0:
+            supportedMethods.append(0x02)
+        
+        for supportedMethod in supportedMethods:
+            if supportedMethod in methods:
+                if supportedMethod == 0x00:
                     response = struct.pack("!BB", 0x05, 0x00)
+                    
                     self.transport.write(response)
                     
                     self.dataState = 2
+                    
+                    return False
                 else:
-                    response = struct.pack("!BB", 0x05, 0xFF)
-                    self.transport.write(response)
-                    self.transport.loseConnection()
-            else:
-                response = struct.pack("!BB", 0x05, 0xFF)
-                self.transport.write(response)
-                self.transport.loseConnection()
-    
+                    if supportedMethod == 0x02:
+                        response = struct.pack("!BB", 0x05, 0x02)
+                        
+                        self.transport.write(response)
+                        
+                        self.dataState = 1
+                        
+                        return True
+        
+        response = struct.pack("!BB", 0x05, 0xFF)
+        
+        self.transport.write(response)
+        self.transport.loseConnection()
+        
+        return True
+        
     def processDataState1(self):
         twunnel.logger.log(3, "trace: SOCKS5InputProtocol.processDataState1")
         
         if len(self.data) < 2:
-            return
+            return True
         
         version, nameLength = struct.unpack("!BB", self.data[:2])
         
         if len(self.data) < 2 + nameLength:
-            return
+            return True
         
         name, = struct.unpack("!%ds" % nameLength, self.data[2:2 + nameLength])
         
         if len(self.data) < 2 + nameLength + 1:
-            return
+            return True
         
         passwordLength, = struct.unpack("!B", self.data[2 + nameLength])
         
         if len(self.data) < 2 + nameLength + 1 + passwordLength:
-            return
+            return True
         
         password, = struct.unpack("!%ds" % passwordLength, self.data[2 + nameLength + 1:2 + nameLength + 1 + passwordLength])
         
         self.data = self.data[2 + nameLength + 1 + passwordLength:] 
         
-        authorized = False;
-        
-        if len(self.configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"]) == 0:
-            authorized = True
-        
-        if authorized == False:
-            i = 0
-            while i < len(self.configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"]):
-                if self.configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"][i]["NAME"] == name and self.configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"][i]["PASSWORD"] == password:
-                    authorized = True
-                    break
+        i = 0
+        while i < len(self.configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"]):
+            if self.configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"][i]["NAME"] == name:
+                if self.configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"][i]["PASSWORD"] == password:
+                    response = struct.pack("!BB", 0x05, 0x00)
+                    
+                    self.transport.write(response)
+                    
+                    self.dataState = 2
+                    
+                    return True
                 
-                i = i + 1
+                response = struct.pack("!BB", 0x05, 0x01)
+                
+                self.transport.write(response)
+                self.transport.loseConnection()
+                
+                return True
+            
+            i = i + 1
         
-        if authorized == False:
-            response = struct.pack("!BB", 0x05, 0x01)
-            self.transport.write(response)
-            self.transport.loseConnection()
-            return
+        response = struct.pack("!BB", 0x05, 0x01)
         
-        response = struct.pack("!BB", 0x05, 0x00)
         self.transport.write(response)
+        self.transport.loseConnection()
         
-        self.dataState = 2
-    
+        return True
+        
     def processDataState2(self):
         twunnel.logger.log(3, "trace: SOCKS5InputProtocol.processDataState2")
         
         if len(self.data) < 4:
-            return
+            return True
         
-        version, method, reserved, remoteAddressType = struct.unpack("!BBBB", self.data[:4])
+        version, method, reserved, addressType = struct.unpack("!BBBB", self.data[:4])
         
-        if remoteAddressType == 0x01:
+        if addressType == 0x01:
             if len(self.data) < 10:
-                return
+                return True
             
-            self.remoteAddress, self.remotePort = struct.unpack("!IH", self.data[4:10])
-            self.remoteAddress = socket.inet_ntoa(struct.pack("!I", self.remoteAddress))
+            address, port = struct.unpack("!IH", self.data[4:10])
+            address = socket.inet_ntoa(struct.pack("!I", address))
+            
+            self.remoteAddress = address
+            self.remotePort = port
             
             self.data = self.data[10:]
         else:
-            if remoteAddressType == 0x03:
+            if addressType == 0x03:
                 if len(self.data) < 5:
-                    return
+                    return True
                 
-                remoteAddressLength, = struct.unpack("!B", self.data[4])
+                addressLength, = struct.unpack("!B", self.data[4])
                 
-                if len(self.data) < 7 + remoteAddressLength:
-                    return
+                if len(self.data) < 7 + addressLength:
+                    return True
                 
-                self.remoteAddress, self.remotePort = struct.unpack("!%dsH" % remoteAddressLength, self.data[5:])
+                address, port = struct.unpack("!%dsH" % addressLength, self.data[5:])
                 
-                self.data = self.data[7 + remoteAddressLength:]
+                self.remoteAddress = address
+                self.remotePort = port
+                
+                self.data = self.data[7 + addressLength:]
             else:
                 response = struct.pack("!BBBBIH", 0x05, 0x08, 0x00, 0x01, 0, 0)
+                
                 self.transport.write(response)
                 self.transport.loseConnection()
-                return
+                
+                return True
         
         twunnel.logger.log(2, "remoteAddress: " + self.remoteAddress)
         twunnel.logger.log(2, "remotePort: " + str(self.remotePort))
         
         if method == 0x01:
             self.outputProtocolConnectionManager.connect(self.remoteAddress, self.remotePort, self)
+            
+            return True
         else:
             response = struct.pack("!BBBBIH", 0x05, 0x07, 0x00, 0x01, 0, 0)
+            
             self.transport.write(response)
             self.transport.loseConnection()
-            return
+            
+            return True
         
     def processDataState3(self):
         twunnel.logger.log(3, "trace: SOCKS5InputProtocol.processDataState3")
@@ -636,6 +669,8 @@ class SOCKS5InputProtocol(protocol.Protocol):
         
         self.data = ""
         
+        return True
+        
     def outputProtocol_connectionMade(self):
         twunnel.logger.log(3, "trace: SOCKS5InputProtocol.outputProtocol_connectionMade")
         
@@ -643,6 +678,7 @@ class SOCKS5InputProtocol(protocol.Protocol):
             self.transport.registerProducer(self.outputProtocol, True)
             
             response = struct.pack("!BBBBIH", 0x05, 0x00, 0x00, 0x01, 0, 0)
+            
             self.transport.write(response)
             
             self.outputProtocol.inputProtocol_connectionMade()
@@ -660,6 +696,7 @@ class SOCKS5InputProtocol(protocol.Protocol):
         
         if self.connectionState == 1:
             response = struct.pack("!BBBBIH", 0x05, 0x05, 0x00, 0x01, 0, 0)
+            
             self.transport.write(response)
             self.transport.loseConnection()
         
@@ -1027,21 +1064,15 @@ class WSOutputProtocol(autobahn.twisted.websocket.WebSocketClientProtocol):
         self.connectionState = 1
         
         request = {}
-        request["REMOTE_PROXY_SERVER"] = {}
-        request["REMOTE_PROXY_SERVER"]["ACCOUNT"] = {}
-        request["REMOTE_PROXY_SERVER"]["ACCOUNT"]["NAME"] = str(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"]["NAME"])
-        request["REMOTE_PROXY_SERVER"]["ACCOUNT"]["PASSWORD"] = str(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"]["PASSWORD"])
-        request["REMOTE_ADDRESS"] = str(self.remoteAddress)
-        request["REMOTE_PORT"] = self.remotePort
+        request["VERSION"] = 0x05
+        request["METHODS"] = [0x00, 0x02]
         
-        encoder = json.JSONEncoder()
-        message = encoder.encode(request)
+        message = self.encodeMessage(request)
         
         self.sendMessage(message, False)
         
-        self.message = ""
         self.messageState = 0
-
+        
     def onClose(self, wasClean, code, reason):
         twunnel.logger.log(3, "trace: WSOutputProtocol.onClose")
         
@@ -1052,37 +1083,111 @@ class WSOutputProtocol(autobahn.twisted.websocket.WebSocketClientProtocol):
     def onMessage(self, message, binary):
         twunnel.logger.log(3, "trace: WSOutputProtocol.onMessage")
         
-        self.message = self.message + message
+        self.message = message
         if self.messageState == 0:
-            self.processMessageState0();
-            return
+            if self.processMessageState0():
+                return
         if self.messageState == 1:
-            self.processMessageState1();
-            return
+            if self.processMessageState1():
+                return
+        if self.messageState == 2:
+            if self.processMessageState2():
+                return
+        if self.messageState == 3:
+            if self.processMessageState3():
+                return
+        if self.messageState == 4:
+            if self.processMessageState4():
+                return
         
     def processMessageState0(self):
         twunnel.logger.log(3, "trace: WSOutputProtocol.processMessageState0")
         
-        decoder = json.JSONDecoder()
-        response = decoder.decode(self.message)
+        response = self.decodeMessage(self.message)
         
-        self.inputProtocol.outputProtocol_connectionMade()
-        
-        self.message = ""
-        self.messageState = 1
+        if response["METHOD"] == 0x00:
+            self.messageState = 2
+            
+            return False
+        else:
+            if response["METHOD"] == 0x02:
+                request = {}
+                request["VERSION"] = 0x01
+                request["NAME"] = self.factory.configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"]["NAME"]
+                request["PASSWORD"] = self.factory.configuration["REMOTE_PROXY_SERVER"]["ACCOUNT"]["PASSWORD"]
+                
+                message = self.encodeMessage(request)
+                
+                self.sendMessage(message, False)
+                
+                self.messageState = 1
+                
+                return True
+            else:
+                self.sendClose()
+                
+                return True
         
     def processMessageState1(self):
         twunnel.logger.log(3, "trace: WSOutputProtocol.processMessageState1")
         
-        if len(self.message) == 0:
+        response = self.decodeMessage(self.message)
+        
+        if response["STATUS"] != 0x00:
+            self.sendClose()
+            
+            return True
+        
+        self.messageState = 2
+        
+        return False
+        
+    def processMessageState2(self):
+        twunnel.logger.log(3, "trace: WSOutputProtocol.processMessageState2")
+        
+        request = {}
+        request["VERSION"] = 0x05
+        request["METHOD"] = 0x01
+        request["ADDRESS"] = self.remoteAddress
+        request["PORT"] = self.remotePort
+        
+        message = self.encodeMessage(request)
+        
+        self.sendMessage(message, False)
+        
+        self.messageState = 3
+        
+        return True
+        
+    def processMessageState3(self):
+        twunnel.logger.log(3, "trace: WSOutputProtocol.processMessageState3")
+        
+        response = self.decodeMessage(self.message)
+        
+        if response["STATUS"] != 0x00:
+            self.sendClose()
+            
+            return True
+        
+        self.inputProtocol.outputProtocol_connectionMade()
+        
+        self.messageState = 4
+        
+        return True
+        
+    def processMessageState4(self):
+        twunnel.logger.log(3, "trace: WSOutputProtocol.processMessageState4")
+        
+        if self.message == "":
             self.inputProtocol.resumeProducing()
-            return
+            
+            return True
         
         self.sendMessage("", True)
         
         self.inputProtocol.outputProtocol_dataReceived(self.message)
         
-        self.message = ""
+        return True
         
     def inputProtocol_connectionMade(self):
         twunnel.logger.log(3, "trace: WSOutputProtocol.inputProtocol_connectionMade")
@@ -1100,24 +1205,32 @@ class WSOutputProtocol(autobahn.twisted.websocket.WebSocketClientProtocol):
         
         if self.connectionState == 1:
             self.sendMessage(data, True)
-    
+        
     def pauseProducing(self):
         twunnel.logger.log(3, "trace: WSOutputProtocol.pauseProducing")
         
         if self.connectionState == 1:
             self.transport.pauseProducing()
-    
+        
     def resumeProducing(self):
         twunnel.logger.log(3, "trace: WSOutputProtocol.resumeProducing")
         
         if self.connectionState == 1:
             self.transport.resumeProducing()
-    
+        
     def stopProducing(self):
         twunnel.logger.log(3, "trace: WSOutputProtocol.stopProducing")
         
         if self.connectionState == 1:
             self.transport.stopProducing()
+        
+    def encodeMessage(self, message):
+        encoder = json.JSONEncoder()
+        return encoder.encode(message)
+        
+    def decodeMessage(self, message):
+        decoder = json.JSONDecoder()
+        return decoder.decode(message)
 
 class WSOutputProtocolFactory(autobahn.twisted.websocket.WebSocketClientFactory):
     protocol = WSOutputProtocol
@@ -1146,14 +1259,14 @@ class WSOutputProtocolFactory(autobahn.twisted.websocket.WebSocketClientFactory)
         
         self.inputProtocol.outputProtocol_connectionFailed(reason)
 
-class ClientContextFactory(ssl.ClientContextFactory):
+class WSClientContextFactory(ssl.ClientContextFactory):
     def __init__(self, verify_locations):
-        twunnel.logger.log(3, "trace: ClientContextFactory.__init__")
+        twunnel.logger.log(3, "trace: WSClientContextFactory.__init__")
         
         self.verify_locations = verify_locations
         
     def getContext(self):
-        twunnel.logger.log(3, "trace: ClientContextFactory.getContext")
+        twunnel.logger.log(3, "trace: WSClientContextFactory.getContext")
         
         self.method = OpenSSL.SSL.TLSv1_METHOD
         
@@ -1164,7 +1277,7 @@ class ClientContextFactory(ssl.ClientContextFactory):
         return context
         
     def verify(self, connection, certificate, errorNumber, errorDepth, certificateOk):
-        twunnel.logger.log(3, "trace: ClientContextFactory.verify")
+        twunnel.logger.log(3, "trace: WSClientContextFactory.verify")
         
         if certificateOk:
             twunnel.logger.log(2, "certificate: ok")
@@ -1191,7 +1304,7 @@ class WSOutputProtocolConnection(object):
             factory = WSOutputProtocolFactory(self.configuration, remoteAddress, remotePort, inputProtocol, "wss://" + str(self.configuration["REMOTE_PROXY_SERVER"]["ADDRESS"]) + ":" + str(self.configuration["REMOTE_PROXY_SERVER"]["PORT"]))
             
             if self.configuration["REMOTE_PROXY_SERVER"]["CERTIFICATE"]["AUTHORITY"]["FILE"] != "":
-                contextFactory = ClientContextFactory(self.configuration["REMOTE_PROXY_SERVER"]["CERTIFICATE"]["AUTHORITY"]["FILE"])
+                contextFactory = WSClientContextFactory(self.configuration["REMOTE_PROXY_SERVER"]["CERTIFICATE"]["AUTHORITY"]["FILE"])
             else:
                 contextFactory = ssl.ClientContextFactory()
             

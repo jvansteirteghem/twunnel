@@ -128,21 +128,25 @@ class SSHChannel(channel.SSHChannel):
         
         self.data = self.data + data
         if self.dataState == 0:
-            self.processDataState0()
-            return
+            if self.processDataState0():
+                return
         if self.dataState == 1:
-            self.processDataState1()
-            return
+            if self.processDataState1():
+                return
     
     def processDataState0(self):
         twunnel.logger.log(3, "trace: SSHChannel.processDataState0")
         
+        return True
+        
     def processDataState1(self):
-        twunnel.logger.log(3, "trace: SSHChannel.processDataState0")
+        twunnel.logger.log(3, "trace: SSHChannel.processDataState1")
         
         self.outputProtocol.inputProtocol_dataReceived(self.data)
         
         self.data = ""
+        
+        return True
         
     def eofReceived(self):
         twunnel.logger.log(3, "trace: SSHChannel.eofReceived")
@@ -271,36 +275,24 @@ class SSHUsernamePasswordCredentialsChecker(object):
     def requestAvatarId(self, credentials):
         twunnel.logger.log(3, "trace: SSHUsernamePasswordCredentialsChecker.requestAvatarId")
         
-        i = -1
-        authorized = False
-        
         if len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]) == 0:
-            i = -1
-            authorized = True
+            return defer.succeed(-1)
         
-        if authorized == False:
-            i = 0
-            while i < len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]):
-                if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["NAME"] == credentials.username:
-                    if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["PASSWORD"] != "":
-                        if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["PASSWORD"] == credentials.password:
-                            authorized = True
-                    
-                    if authorized == False:
-                        twunnel.logger.log(1, "ERROR_ACCOUNT_PASSWORD")
-                        
-                        return defer.fail(UnauthorizedLogin("ERROR_ACCOUNT_PASSWORD"))
-                    
-                    break
+        i = 0
+        while i < len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]):
+            if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["NAME"] == credentials.username:
+                if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["PASSWORD"] == credentials.password:
+                    return defer.succeed(i)
                 
-                i = i + 1
+                twunnel.logger.log(1, "ERROR_ACCOUNT_PASSWORD")
+                
+                return defer.fail(UnauthorizedLogin("ERROR_ACCOUNT_PASSWORD"))
             
-            if authorized == False:
-                twunnel.logger.log(1, "ERROR_ACCOUNT_NAME")
-                
-                return defer.fail(UnauthorizedLogin("ERROR_ACCOUNT_NAME"))
+            i = i + 1
         
-        return defer.succeed(i)
+        twunnel.logger.log(1, "ERROR_ACCOUNT_NAME")
+        
+        return defer.fail(UnauthorizedLogin("ERROR_ACCOUNT_NAME"))
 
 class SSHPrivateKeyCredentialsChecker(object):
     implements(checkers.ICredentialsChecker)
@@ -314,48 +306,35 @@ class SSHPrivateKeyCredentialsChecker(object):
     def requestAvatarId(self, credentials):
         twunnel.logger.log(3, "trace: SSHPrivateKeyCredentialsChecker.requestAvatarId")
         
-        i = -1
-        authorized = False
-        
         if len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]) == 0:
-            i = -1
-            authorized = True
+            return defer.succeed(-1)
         
-        if authorized == False:
-            i = 0
-            while i < len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]):
-                if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["NAME"] == credentials.username:
-                    j = 0
-                    while j < len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["KEYS"]):
-                        if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["KEYS"][j]["PUBLIC"]["FILE"] != "":
-                            key = keys.Key.fromFile(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["KEYS"][j]["PUBLIC"]["FILE"], passphrase=str(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["KEYS"][j]["PUBLIC"]["PASSPHRASE"]))
-                            
-                            if key.blob() == credentials.blob:
-                                if credentials.signature:
-                                    if key.verify(credentials.signature, credentials.sigData):
-                                        authorized = True
-                                else:
-                                    return defer.fail(ValidPublicKey())
-                                
-                                break
+        if not credentials.signature:
+            return defer.fail(ValidPublicKey())
+        
+        i = 0
+        while i < len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]):
+            if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["NAME"] == credentials.username:
+                j = 0
+                while j < len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["KEYS"]):
+                    if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["KEYS"][j]["PUBLIC"]["FILE"] != "":
+                        key = keys.Key.fromFile(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["KEYS"][j]["PUBLIC"]["FILE"], passphrase=str(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["KEYS"][j]["PUBLIC"]["PASSPHRASE"]))
                         
-                        j = j + 1
+                        if key.blob() == credentials.blob:
+                            if key.verify(credentials.signature, credentials.sigData):
+                                return defer.succeed(i)
                     
-                    if authorized == False:
-                        twunnel.logger.log(1, "ERROR_ACCOUNT_KEYS_PUBLIC")
-                        
-                        return defer.fail(UnauthorizedLogin("ERROR_ACCOUNT_KEYS_PUBLIC"))
-                    
-                    break
+                    j = j + 1
                 
-                i = i + 1
+                twunnel.logger.log(1, "ERROR_ACCOUNT_KEYS_PUBLIC")
+                
+                return defer.fail(UnauthorizedLogin("ERROR_ACCOUNT_KEYS_PUBLIC"))
             
-            if authorized == False:
-                twunnel.logger.log(1, "ERROR_ACCOUNT_NAME")
-                
-                return defer.fail(UnauthorizedLogin("ERROR_ACCOUNT_NAME"))
+            i = i + 1
         
-        return defer.succeed(i)
+        twunnel.logger.log(1, "ERROR_ACCOUNT_NAME")
+        
+        return defer.fail(UnauthorizedLogin("ERROR_ACCOUNT_NAME"))
 
 class SSHRealm(object):
     implements(portal.IRealm)
@@ -367,7 +346,7 @@ class SSHRealm(object):
         self.connections = {}
         
         i = -1
-        self.connections[i] = 0
+        self.connections[i] = -1
         
         i = i + 1
         while i < len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]):
@@ -379,16 +358,9 @@ class SSHRealm(object):
         twunnel.logger.log(3, "trace: SSHRealm.requestAvatar")
         
         i = avatarId
-        authorized = False
         
-        if len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]) == 0:
-            authorized = True
-        
-        if authorized == False:
-            if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["CONNECTIONS"] > self.connections[i]:
-                authorized = True
-            
-            if authorized == False:
+        if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["CONNECTIONS"] != -1:
+            if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["CONNECTIONS"] == self.connections[i]:
                 twunnel.logger.log(1, "ERROR_ACCOUNT_CONNECTIONS")
                 
                 return defer.fail(UnauthorizedLogin("ERROR_ACCOUNT_CONNECTIONS"))
@@ -466,12 +438,12 @@ class WSInputProtocol(autobahn.twisted.websocket.WebSocketServerProtocol):
         self.connectionState = 0
         self.message = ""
         self.messageState = 0
-    
+        
     def onOpen(self):
         twunnel.logger.log(3, "trace: WSInputProtocol.onOpen")
         
         self.connectionState = 1
-
+        
     def onClose(self, wasClean, code, reason):
         twunnel.logger.log(3, "trace: WSInputProtocol.onClose")
         
@@ -479,84 +451,182 @@ class WSInputProtocol(autobahn.twisted.websocket.WebSocketServerProtocol):
         
         if self.outputProtocol is not None:
             self.outputProtocol.inputProtocol_connectionLost(reason)
-            
+        
     def onMessage(self, message, binary):
         twunnel.logger.log(3, "trace: WSInputProtocol.onMessage")
         
-        self.message = self.message + message
+        self.message = message
         if self.messageState == 0:
-            self.processMessageState0()
-            return
+            if self.processMessageState0():
+                return
         if self.messageState == 1:
-            self.processMessageState1()
-            return
-    
+            if self.processMessageState1():
+                return
+        if self.messageState == 2:
+            if self.processMessageState2():
+                return
+        if self.messageState == 3:
+            if self.processMessageState3():
+                return
+        
     def processMessageState0(self):
         twunnel.logger.log(3, "trace: WSInputProtocol.processMessageState0")
         
-        decoder = json.JSONDecoder()
-        request = decoder.decode(self.message)
+        request = self.decodeMessage(self.message)
         
-        authorized = False;
-
+        supportedMethods = []
         if len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]) == 0:
-            authorized = True
+            supportedMethods.append(0x00)
+        else:
+            supportedMethods.append(0x02)
         
-        if authorized == False:
-            i = 0
-            while i < len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]):
-                if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["NAME"] == request["REMOTE_PROXY_SERVER"]["ACCOUNT"]["NAME"] and self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["PASSWORD"] == request["REMOTE_PROXY_SERVER"]["ACCOUNT"]["PASSWORD"]:
-                    authorized = True
-                    break
+        for supportedMethod in supportedMethods:
+            if supportedMethod in request["METHODS"]:
+                if supportedMethod == 0x00:
+                    response = {}
+                    response["VERSION"] = 0x05
+                    response["METHOD"] = 0x00
+                    
+                    message = self.encodeMessage(response)
+                    
+                    self.sendMessage(message, False)
+                    
+                    self.messageState = 2
+                    
+                    return True
+                else:
+                    if supportedMethod == 0x02:
+                        response = {}
+                        response["VERSION"] = 0x05
+                        response["METHOD"] = 0x02
+                        
+                        message = self.encodeMessage(response)
+                        
+                        self.sendMessage(message, False)
+                        
+                        self.messageState = 1
+                        
+                        return True
+        
+        response = {}
+        response["VERSION"] = 0x05
+        response["METHOD"] = 0xFF
+        
+        message = self.encodeMessage(response)
+        
+        self.sendMessage(message, False)
+        self.sendClose()
+        
+        return True
+        
+    def processMessageState1(self):
+        twunnel.logger.log(3, "trace: WSInputProtocol.processMessageState1")
+        
+        request = self.decodeMessage(self.message)
+        
+        i = 0
+        while i < len(self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]):
+            if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["NAME"] == request["NAME"]:
+                if self.configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i]["PASSWORD"] == request["PASSWORD"]:
+                    response = {}
+                    response["VERSION"] = 0x05
+                    response["STATUS"] = 0x00
+                    
+                    message = self.encodeMessage(response)
+                    
+                    self.sendMessage(message, False)
+                    
+                    self.messageState = 2
+                    
+                    return True
                 
-                i = i + 1
-        
-        if authorized == False:
-            self.sendClose()
+                response = {}
+                response["VERSION"] = 0x05
+                response["STATUS"] = 0x01
+                
+                message = self.encodeMessage(response)
+                
+                self.sendMessage(message, False)
+                self.sendClose()
+                
+                return True
             
-            return
+            i = i + 1
         
-        self.remoteAddress = request["REMOTE_ADDRESS"]
-        self.remotePort = request["REMOTE_PORT"]
+        response = {}
+        response["VERSION"] = 0x05
+        response["STATUS"] = 0x01
+        
+        message = self.encodeMessage(response)
+        
+        self.sendMessage(message, False)
+        self.sendClose()
+        
+        return True
+        
+    def processMessageState2(self):
+        twunnel.logger.log(3, "trace: WSInputProtocol.processMessageState2")
+        
+        request = self.decodeMessage(self.message)
+        
+        self.remoteAddress = request["ADDRESS"]
+        self.remotePort = request["PORT"]
         
         twunnel.logger.log(2, "remoteAddress: " + self.remoteAddress)
         twunnel.logger.log(2, "remotePort: " + str(self.remotePort))
         
-        outputProtocolFactory = WSOutputProtocolFactory(self)
+        if request["METHOD"] == 0x01:
+            outputProtocolFactory = WSOutputProtocolFactory(self)
+            
+            tunnel = twunnel.proxy_server.createTunnel(self.configuration)
+            tunnel.connect(self.remoteAddress, self.remotePort, outputProtocolFactory)
+            
+            return True
+        else:
+            response = {}
+            response["VERSION"] = 0x05
+            response["STATUS"] = 0x07
+            response["ADDRESS"] = 0
+            response["PORT"] = 0
+            
+            message = self.encodeMessage(response)
+            
+            self.sendMessage(message, False)
+            self.sendClose()
+            
+            return True
         
-        tunnel = twunnel.proxy_server.createTunnel(self.configuration)
-        tunnel.connect(self.remoteAddress, self.remotePort, outputProtocolFactory)
-    
-    def processMessageState1(self):
-        twunnel.logger.log(3, "trace: WSInputProtocol.processMessageState1")
+    def processMessageState3(self):
+        twunnel.logger.log(3, "trace: WSInputProtocol.processMessageState3")
         
-        if len(self.message) == 0:
+        if self.message == "":
             self.outputProtocol.resumeProducing()
-            return
+            
+            return True
         
         self.sendMessage("", True)
         
         self.outputProtocol.inputProtocol_dataReceived(self.message)
         
-        self.message = ""
+        return True
         
     def outputProtocol_connectionMade(self):
         twunnel.logger.log(3, "trace: WSInputProtocol.outputProtocol_connectionMade")
         
         if self.connectionState == 1:
             response = {}
-            response["REMOTE_ADDRESS"] = self.remoteAddress
-            response["REMOTE_PORT"] = self.remotePort
+            response["VERSION"] = 0x05
+            response["STATUS"] = 0x00
+            response["ADDRESS"] = 0
+            response["PORT"] = 0
             
-            encoder = json.JSONEncoder()
-            message = encoder.encode(response)
+            message = self.encodeMessage(response)
             
             self.sendMessage(message, False)
             
             self.outputProtocol.inputProtocol_connectionMade()
             
-            self.message = ""
-            self.messageState = 1
+            self.messageState = 3
         else:
             if self.connectionState == 2:
                 self.outputProtocol.inputProtocol_connectionLost(None)
@@ -565,6 +635,15 @@ class WSInputProtocol(autobahn.twisted.websocket.WebSocketServerProtocol):
         twunnel.logger.log(3, "trace: WSInputProtocol.outputProtocol_connectionFailed")
         
         if self.connectionState == 1:
+            response = {}
+            response["VERSION"] = 0x05
+            response["STATUS"] = 0x05
+            response["ADDRESS"] = 0
+            response["PORT"] = 0
+            
+            message = self.encodeMessage(response)
+            
+            self.sendMessage(message, False)
             self.sendClose()
         
     def outputProtocol_connectionLost(self, reason):
@@ -586,13 +665,13 @@ class WSInputProtocol(autobahn.twisted.websocket.WebSocketServerProtocol):
         else:
             if self.connectionState == 2:
                 self.outputProtocol.inputProtocol_connectionLost(None)
-    
+        
     def pauseProducing(self):
         twunnel.logger.log(3, "trace: WSInputProtocol.pauseProducing")
         
         if self.connectionState == 1:
             self.transport.pauseProducing()
-    
+        
     def resumeProducing(self):
         twunnel.logger.log(3, "trace: WSInputProtocol.resumeProducing")
         
@@ -604,6 +683,14 @@ class WSInputProtocol(autobahn.twisted.websocket.WebSocketServerProtocol):
         
         if self.connectionState == 1:
             self.transport.stopProducing()
+        
+    def encodeMessage(self, message):
+        encoder = json.JSONEncoder()
+        return encoder.encode(message)
+        
+    def decodeMessage(self, message):
+        decoder = json.JSONDecoder()
+        return decoder.decode(message)
 
 class WSInputProtocolFactory(autobahn.twisted.websocket.WebSocketServerFactory):
     protocol = WSInputProtocol
