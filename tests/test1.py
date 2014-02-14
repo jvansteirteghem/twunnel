@@ -133,7 +133,12 @@ class SOCKS5TunnelIPv4TestCase(unittest.TestCase):
         self.transport.clear()
         
         version, numberOfMethods = struct.unpack("!BB", value[:2])
-        methods = struct.unpack("!%dB" % numberOfMethods, value[2:2 + numberOfMethods])
+        
+        value = value[2:]
+        
+        methods = struct.unpack("!%dB" % numberOfMethods, value[:numberOfMethods])
+        
+        value = value[numberOfMethods:]
         
         self.assertEqual(version, 0x05)
         self.assertEqual(numberOfMethods, 0x02)
@@ -149,13 +154,18 @@ class SOCKS5TunnelIPv4TestCase(unittest.TestCase):
         
         version, method, reserved, addressType = struct.unpack("!BBBB", value[:4])
         
+        value = value[4:]
+        
         self.assertEqual(version, 0x05)
         self.assertEqual(method, 0x01)
         self.assertEqual(reserved, 0x00)
         self.assertEqual(addressType, 0x01)
         
-        address, port = struct.unpack("!IH", value[4:10])
-        address = socket.inet_ntoa(struct.pack("!I", address))
+        address, port = struct.unpack("!IH", value[:6])
+        address = struct.pack("!I", address)
+        address = socket.inet_ntop(socket.AF_INET, address)
+        
+        value = value[6:]
         
         self.assertEqual(address, self.address)
         self.assertEqual(port, self.port)
@@ -197,7 +207,12 @@ class SOCKS5TunnelDNTestCase(unittest.TestCase):
         self.transport.clear()
         
         version, numberOfMethods = struct.unpack("!BB", value[:2])
-        methods = struct.unpack("!%dB" % numberOfMethods, value[2:2 + numberOfMethods])
+        
+        value = value[2:]
+        
+        methods = struct.unpack("!%dB" % numberOfMethods, value[:numberOfMethods])
+        
+        value = value[numberOfMethods:]
         
         self.assertEqual(version, 0x05)
         self.assertEqual(numberOfMethods, 0x02)
@@ -213,13 +228,20 @@ class SOCKS5TunnelDNTestCase(unittest.TestCase):
         
         version, method, reserved, addressType = struct.unpack("!BBBB", value[:4])
         
+        value = value[4:]
+        
         self.assertEqual(version, 0x05)
         self.assertEqual(method, 0x01)
         self.assertEqual(reserved, 0x00)
         self.assertEqual(addressType, 0x03)
         
-        addressLength, = struct.unpack("!B", value[4])
-        address, port = struct.unpack("!%dsH" % addressLength, value[5:])
+        addressLength, = struct.unpack("!B", value[:1])
+        
+        value = value[1:]
+        
+        address, port = struct.unpack("!%dsH" % addressLength, value[:addressLength + 2])
+        
+        value = value[addressLength + 2:]
         
         self.assertEqual(address, self.address)
         self.assertEqual(port, self.port)

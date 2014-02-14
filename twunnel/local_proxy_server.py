@@ -24,15 +24,19 @@ def setDefaultConfiguration(configuration, keys):
             configuration["LOCAL_PROXY_SERVER"].setdefault("ADDRESS", "")
             configuration["LOCAL_PROXY_SERVER"].setdefault("PORT", 0)
         else:
-            if configuration["LOCAL_PROXY_SERVER"]["TYPE"] == "SOCKS5":
+            if configuration["LOCAL_PROXY_SERVER"]["TYPE"] == "SOCKS4":
                 configuration["LOCAL_PROXY_SERVER"].setdefault("ADDRESS", "")
                 configuration["LOCAL_PROXY_SERVER"].setdefault("PORT", 0)
-                configuration["LOCAL_PROXY_SERVER"].setdefault("ACCOUNTS", [])
-                i = 0
-                while i < len(configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"]):
-                    configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"][i].setdefault("NAME", "")
-                    configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"][i].setdefault("PASSWORD", "")
-                    i = i + 1
+            else:
+                if configuration["LOCAL_PROXY_SERVER"]["TYPE"] == "SOCKS5":
+                    configuration["LOCAL_PROXY_SERVER"].setdefault("ADDRESS", "")
+                    configuration["LOCAL_PROXY_SERVER"].setdefault("PORT", 0)
+                    configuration["LOCAL_PROXY_SERVER"].setdefault("ACCOUNTS", [])
+                    i = 0
+                    while i < len(configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"]):
+                        configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"][i].setdefault("NAME", "")
+                        configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"][i].setdefault("PASSWORD", "")
+                        i = i + 1
     
     if "REMOTE_PROXY_SERVERS" in keys:
         configuration.setdefault("REMOTE_PROXY_SERVERS", [])
@@ -299,16 +303,20 @@ class HTTPSInputProtocol(protocol.Protocol):
     def processDataState0(self):
         twunnel.logger.log(3, "trace: HTTPSInputProtocol.processDataState0")
         
-        i = self.data.find("\r\n\r\n")
+        data = self.data
+        
+        i = data.find("\r\n\r\n")
         
         if i == -1:
             return True
         
         i = i + 4
         
-        request = self.data[:i]
+        request = data[:i]
         
-        self.data = self.data[i:]
+        data = data[i:]
+        
+        self.data = data
         
         requestLines = request.split("\r\n")
         requestLine = requestLines[0].split(" ", 2)
@@ -427,7 +435,7 @@ class HTTPSInputProtocol(protocol.Protocol):
         
         if self.connectionState == 1:
             self.transport.stopProducing()
-        
+
 class HTTPSInputProtocolFactory(protocol.ClientFactory):
     protocol = HTTPSInputProtocol
     
@@ -455,6 +463,204 @@ class HTTPSInputProtocolFactory(protocol.ClientFactory):
 
 def createHTTPSPort(configuration, outputProtocolConnectionManager):
     factory = HTTPSInputProtocolFactory(configuration, outputProtocolConnectionManager)
+    
+    return tcp.Port(configuration["LOCAL_PROXY_SERVER"]["PORT"], factory, 50, configuration["LOCAL_PROXY_SERVER"]["ADDRESS"], reactor)
+
+class SOCKS4InputProtocol(protocol.Protocol):
+    implements(interfaces.IPushProducer)
+    
+    def __init__(self):
+        twunnel.logger.log(3, "trace: SOCKS4InputProtocol.__init__")
+        
+        self.configuration = None
+        self.outputProtocolConnectionManager = None
+        self.outputProtocol = None
+        self.remoteAddress = ""
+        self.remotePort = 0
+        self.connectionState = 0
+        self.data = ""
+        self.dataState = 0
+    
+    def connectionMade(self):
+        twunnel.logger.log(3, "trace: SOCKS4InputProtocol.connectionMade")
+        
+        self.connectionState = 1
+    
+    def connectionLost(self, reason):
+        twunnel.logger.log(3, "trace: SOCKS4InputProtocol.connectionLost")
+        
+        self.connectionState = 2
+        
+        if self.outputProtocol is not None:
+            self.outputProtocol.inputProtocol_connectionLost(reason)
+    
+    def dataReceived(self, data):
+        twunnel.logger.log(3, "trace: SOCKS4InputProtocol.dataReceived")
+        
+        self.data = self.data + data
+        if self.dataState == 0:
+            if self.processDataState0():
+                return
+        if self.dataState == 1:
+            if self.processDataState1():
+                return
+        
+    def processDataState0(self):
+        twunnel.logger.log(3, "trace: SOCKS4InputProtocol.processDataState0")
+        
+        data = self.data
+        
+        if len(data) < 8:
+            return True
+        
+        version, method, port, address = struct.unpack("!BBHI", data[:8])
+        
+        data = data[8:]
+        
+        addressType = 0x01
+        if address >= 1 and address <= 255:
+            addressType = 0x03
+        
+        self.remotePort = port
+        
+        if addressType == 0x01:
+            address = struct.pack("!I", address)
+            address = socket.inet_ntop(socket.AF_INET, address)
+            
+            self.remoteAddress = address
+        
+        if "\x00" not in data:
+            return True
+        
+        name, data = data.split("\x00", 1)
+        
+        if addressType == 0x03:
+            if "\x00" not in data:
+                return True
+            
+            address, data = data.split("\x00", 1)
+            
+            self.remoteAddress = address
+        
+        self.data = data
+        
+        twunnel.logger.log(2, "remoteAddress: " + self.remoteAddress)
+        twunnel.logger.log(2, "remotePort: " + str(self.remotePort))
+        
+        if method == 0x01:
+            self.outputProtocolConnectionManager.connect(self.remoteAddress, self.remotePort, self)
+            
+            return True
+        else:
+            response = struct.pack("!BBHI", 0x00, 0x5b, 0, 0)
+            
+            self.transport.write(response)
+            self.transport.loseConnection()
+            
+            return True
+        
+    def processDataState1(self):
+        twunnel.logger.log(3, "trace: SOCKS4InputProtocol.processDataState1")
+        
+        self.outputProtocol.inputProtocol_dataReceived(self.data)
+        
+        self.data = ""
+        
+        return True
+        
+    def outputProtocol_connectionMade(self):
+        twunnel.logger.log(3, "trace: SOCKS4InputProtocol.outputProtocol_connectionMade")
+        
+        if self.connectionState == 1:
+            self.transport.registerProducer(self.outputProtocol, True)
+            
+            response = struct.pack("!BBHI", 0x00, 0x5a, 0, 0)
+            
+            self.transport.write(response)
+            
+            self.outputProtocol.inputProtocol_connectionMade()
+            if len(self.data) > 0:
+                self.outputProtocol.inputProtocol_dataReceived(self.data)
+            
+            self.data = ""
+            self.dataState = 1
+        else:
+            if self.connectionState == 2:
+                self.outputProtocol.inputProtocol_connectionLost(None)
+        
+    def outputProtocol_connectionFailed(self, reason):
+        twunnel.logger.log(3, "trace: SOCKS4InputProtocol.outputProtocol_connectionFailed")
+        
+        if self.connectionState == 1:
+            response = struct.pack("!BBHI", 0x00, 0x5b, 0, 0)
+            
+            self.transport.write(response)
+            self.transport.loseConnection()
+        
+    def outputProtocol_connectionLost(self, reason):
+        twunnel.logger.log(3, "trace: SOCKS4InputProtocol.outputProtocol_connectionLost")
+        
+        if self.connectionState == 1:
+            self.transport.unregisterProducer()
+            self.transport.loseConnection()
+        else:
+            if self.connectionState == 2:
+                self.outputProtocol.inputProtocol_connectionLost(None)
+        
+    def outputProtocol_dataReceived(self, data):
+        twunnel.logger.log(3, "trace: SOCKS4InputProtocol.outputProtocol_dataReceived")
+        
+        if self.connectionState == 1:
+            self.transport.write(data)
+        else:
+            if self.connectionState == 2:
+                self.outputProtocol.inputProtocol_connectionLost(None)
+    
+    def pauseProducing(self):
+        twunnel.logger.log(3, "trace: SOCKS4InputProtocol.pauseProducing")
+        
+        if self.connectionState == 1:
+            self.transport.pauseProducing()
+    
+    def resumeProducing(self):
+        twunnel.logger.log(3, "trace: SOCKS4InputProtocol.resumeProducing")
+        
+        if self.connectionState == 1:
+            self.transport.resumeProducing()
+    
+    def stopProducing(self):
+        twunnel.logger.log(3, "trace: SOCKS4InputProtocol.stopProducing")
+        
+        if self.connectionState == 1:
+            self.transport.stopProducing()
+
+class SOCKS4InputProtocolFactory(protocol.ClientFactory):
+    protocol = SOCKS4InputProtocol
+    
+    def __init__(self, configuration, outputProtocolConnectionManager):
+        twunnel.logger.log(3, "trace: SOCKS4InputProtocolFactory.__init__")
+        
+        self.configuration = configuration
+        self.outputProtocolConnectionManager = outputProtocolConnectionManager
+    
+    def buildProtocol(self, *args, **kwargs):
+        inputProtocol = protocol.ClientFactory.buildProtocol(self, *args, **kwargs)
+        inputProtocol.configuration = self.configuration
+        inputProtocol.outputProtocolConnectionManager = self.outputProtocolConnectionManager
+        return inputProtocol
+    
+    def startFactory(self):
+        twunnel.logger.log(3, "trace: SOCKS4InputProtocolFactory.startFactory")
+        
+        self.outputProtocolConnectionManager.startConnectionManager()
+    
+    def stopFactory(self):
+        twunnel.logger.log(3, "trace: SOCKS4InputProtocolFactory.stopFactory")
+        
+        self.outputProtocolConnectionManager.stopConnectionManager()
+
+def createSOCKS4Port(configuration, outputProtocolConnectionManager):
+    factory = SOCKS4InputProtocolFactory(configuration, outputProtocolConnectionManager)
     
     return tcp.Port(configuration["LOCAL_PROXY_SERVER"]["PORT"], factory, 50, configuration["LOCAL_PROXY_SERVER"]["ADDRESS"], reactor)
 
@@ -506,17 +712,23 @@ class SOCKS5InputProtocol(protocol.Protocol):
     def processDataState0(self):
         twunnel.logger.log(3, "trace: SOCKS5InputProtocol.processDataState0")
         
-        if len(self.data) < 2:
+        data = self.data
+        
+        if len(data) < 2:
             return True
         
-        version, numberOfMethods = struct.unpack("!BB", self.data[:2])
+        version, numberOfMethods = struct.unpack("!BB", data[:2])
         
-        if len(self.data) < 2 + numberOfMethods:
+        data = data[2:]
+        
+        if len(data) < numberOfMethods:
             return True
         
-        methods = struct.unpack("!%dB" % numberOfMethods, self.data[2:2 + numberOfMethods])
+        methods = struct.unpack("!%dB" % numberOfMethods, data[:numberOfMethods])
         
-        self.data = self.data[2 + numberOfMethods:]
+        data = data[numberOfMethods:]
+        
+        self.data = data
         
         supportedMethods = []
         if len(self.configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"]) == 0:
@@ -554,27 +766,37 @@ class SOCKS5InputProtocol(protocol.Protocol):
     def processDataState1(self):
         twunnel.logger.log(3, "trace: SOCKS5InputProtocol.processDataState1")
         
-        if len(self.data) < 2:
+        data = self.data
+        
+        if len(data) < 2:
             return True
         
-        version, nameLength = struct.unpack("!BB", self.data[:2])
+        version, nameLength = struct.unpack("!BB", data[:2])
         
-        if len(self.data) < 2 + nameLength:
+        data = data[2:]
+        
+        if len(data) < nameLength:
             return True
         
-        name, = struct.unpack("!%ds" % nameLength, self.data[2:2 + nameLength])
+        name, = struct.unpack("!%ds" % nameLength, data[:nameLength])
         
-        if len(self.data) < 2 + nameLength + 1:
+        data = data[nameLength:]
+        
+        if len(data) < 1:
             return True
         
-        passwordLength, = struct.unpack("!B", self.data[2 + nameLength])
+        passwordLength, = struct.unpack("!B", data[:1])
         
-        if len(self.data) < 2 + nameLength + 1 + passwordLength:
+        data = data[1:]
+        
+        if len(data) < passwordLength:
             return True
         
-        password, = struct.unpack("!%ds" % passwordLength, self.data[2 + nameLength + 1:2 + nameLength + 1 + passwordLength])
+        password, = struct.unpack("!%ds" % passwordLength, data[:passwordLength])
         
-        self.data = self.data[2 + nameLength + 1 + passwordLength:] 
+        data = data[passwordLength:]
+        
+        self.data = data
         
         i = 0
         while i < len(self.configuration["LOCAL_PROXY_SERVER"]["ACCOUNTS"]):
@@ -607,38 +829,49 @@ class SOCKS5InputProtocol(protocol.Protocol):
     def processDataState2(self):
         twunnel.logger.log(3, "trace: SOCKS5InputProtocol.processDataState2")
         
-        if len(self.data) < 4:
+        data = self.data
+        
+        if len(data) < 4:
             return True
         
-        version, method, reserved, addressType = struct.unpack("!BBBB", self.data[:4])
+        version, method, reserved, addressType = struct.unpack("!BBBB", data[:4])
+        
+        data = data[4:]
         
         if addressType == 0x01:
-            if len(self.data) < 10:
+            if len(data) < 6:
                 return True
             
-            address, port = struct.unpack("!IH", self.data[4:10])
-            address = socket.inet_ntoa(struct.pack("!I", address))
+            address, port = struct.unpack("!IH", data[:6])
+            address = struct.pack("!I", address)
+            address = socket.inet_ntop(socket.AF_INET, address)
             
             self.remoteAddress = address
             self.remotePort = port
             
-            self.data = self.data[10:]
+            data = data[6:]
+            
+            self.data = data
         else:
             if addressType == 0x03:
-                if len(self.data) < 5:
+                if len(data) < 1:
                     return True
                 
-                addressLength, = struct.unpack("!B", self.data[4])
+                addressLength, = struct.unpack("!B", data[:1])
                 
-                if len(self.data) < 7 + addressLength:
+                data = data[1:]
+                
+                if len(data) < addressLength + 2:
                     return True
                 
-                address, port = struct.unpack("!%dsH" % addressLength, self.data[5:])
+                address, port = struct.unpack("!%dsH" % addressLength, data[:addressLength + 2])
                 
                 self.remoteAddress = address
                 self.remotePort = port
                 
-                self.data = self.data[7 + addressLength:]
+                data = data[addressLength + 2:]
+                
+                self.data = data
             else:
                 response = struct.pack("!BBBBIH", 0x05, 0x08, 0x00, 0x01, 0, 0)
                 
@@ -736,7 +969,7 @@ class SOCKS5InputProtocol(protocol.Protocol):
         
         if self.connectionState == 1:
             self.transport.stopProducing()
-        
+
 class SOCKS5InputProtocolFactory(protocol.ClientFactory):
     protocol = SOCKS5InputProtocol
     
@@ -775,10 +1008,13 @@ def createPort(configuration):
     if configuration["LOCAL_PROXY_SERVER"]["TYPE"] == "HTTPS":
         return createHTTPSPort(configuration, outputProtocolConnectionManager)
     else:
-        if configuration["LOCAL_PROXY_SERVER"]["TYPE"] == "SOCKS5":
-            return createSOCKS5Port(configuration, outputProtocolConnectionManager)
+        if configuration["LOCAL_PROXY_SERVER"]["TYPE"] == "SOCKS4":
+            return createSOCKS4Port(configuration, outputProtocolConnectionManager)
         else:
-            return None
+            if configuration["LOCAL_PROXY_SERVER"]["TYPE"] == "SOCKS5":
+                return createSOCKS5Port(configuration, outputProtocolConnectionManager)
+            else:
+                return None
 
 # SSH
 
