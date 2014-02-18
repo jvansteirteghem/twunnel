@@ -192,7 +192,14 @@ class HTTPSTunnelOutputProtocol(protocol.Protocol):
     def connectionMade(self):
         twunnel.logger.log(3, "trace: HTTPSTunnelOutputProtocol.connectionMade")
         
-        request = "CONNECT " + str(self.factory.address) + ":" + str(self.factory.port) + " HTTP/1.1\r\n"
+        request = "CONNECT "
+        
+        if isIPv6Address(self.factory.address) == True:
+            request = request + "[" + str(self.factory.address) + "]:" + str(self.factory.port)
+        else:
+            request = request + str(self.factory.address) + ":" + str(self.factory.port)
+        
+        request = request + " HTTP/1.1\r\n"
         
         if self.factory.configuration["PROXY_SERVER"]["ACCOUNT"]["NAME"] != "":
             request = request + "Proxy-Authorization: Basic " + base64.standard_b64encode(self.factory.configuration["PROXY_SERVER"]["ACCOUNT"]["NAME"] + ":" + self.factory.configuration["PROXY_SERVER"]["ACCOUNT"]["PASSWORD"]) + "\r\n"
@@ -498,9 +505,12 @@ class SOCKS5TunnelOutputProtocol(protocol.Protocol):
                 
                 request = request + struct.pack("!BB%ds" % addressLength, 0x03, addressLength, address)
             else:
-                self.transport.loseConnection()
-                
-                return True
+                if addressType == 0x04:
+                    address = self.factory.address
+                    address = socket.inet_pton(socket.AF_INET6, address)
+                    address1, address2, address3, address4 = struct.unpack("!IIII", address)
+                    
+                    request = request + struct.pack("!BIIII", 0x04, address1, address2, address3, address4)
         
         port = self.factory.port
         
@@ -530,14 +540,14 @@ class SOCKS5TunnelOutputProtocol(protocol.Protocol):
             return True
         
         if addressType == 0x01:
-            if len(data) < 6:
+            if len(data) < 4:
                 return True
             
-            address, port = struct.unpack("!IH", self.data[:6])
+            address, = struct.unpack("!I", data[:4])
             address = struct.pack("!I", address)
             address = socket.inet_ntop(socket.AF_INET, address)
             
-            data = data[6:]
+            data = data[4:]
         else:
             if addressType == 0x03:
                 if len(data) < 1:
@@ -547,16 +557,29 @@ class SOCKS5TunnelOutputProtocol(protocol.Protocol):
                 
                 data = data[1:]
                 
-                if len(data) < addressLength + 2:
+                if len(data) < addressLength:
                     return True
                 
-                address, port = struct.unpack("!%dsH" % addressLength, data[:addressLength + 2])
+                address, = struct.unpack("!%ds" % addressLength, data[:addressLength])
                 
-                data = data[addressLength + 2:]
+                data = data[addressLength:]
             else:
-                self.transport.loseConnection()
-                
-                return True
+                if addressType == 0x04:
+                    if len(data) < 16:
+                        return True
+                    
+                    address1, address2, address3, address4 = struct.unpack("!IIII", data[:16])
+                    address = struct.pack("!IIII", address1, address2, address3, address4)
+                    address = socket.inet_ntop(socket.AF_INET6, address)
+                    
+                    data = data[16:]
+        
+        if len(data) < 2:
+            return True
+        
+        port, = struct.unpack("!H", data[:2])
+        
+        data = data[2:]
         
         self.factory.tunnelProtocol.tunnelOutputProtocol_connectionMade(data)
         

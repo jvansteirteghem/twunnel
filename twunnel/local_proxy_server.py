@@ -335,13 +335,25 @@ class HTTPSInputProtocol(protocol.Protocol):
         requestVersion = requestLine[2].upper()
         
         if requestMethod == "CONNECT":
-            addressPort = requestURI.split(":", 2)
+            address = ""
+            port = 0
             
-            self.remoteAddress = addressPort[0]
-            if len(addressPort) == 1:
-                self.remotePort = 443
+            i1 = requestURI.find("[")
+            i2 = requestURI.find("]")
+            i3 = requestURI.rfind(":")
+            
+            if i3 > i2:
+                address = requestURI[:i3]
+                port = int(requestURI[i3 + 1:])
             else:
-                self.remotePort = int(addressPort[1])
+                address = requestURI
+                port = 443
+            
+            if i2 > i1:
+                address = address[i1 + 1:i2]
+            
+            self.remoteAddress = address
+            self.remotePort = port
             
             twunnel.logger.log(2, "remoteAddress: " + self.remoteAddress)
             twunnel.logger.log(2, "remotePort: " + str(self.remotePort))
@@ -839,19 +851,16 @@ class SOCKS5InputProtocol(protocol.Protocol):
         data = data[4:]
         
         if addressType == 0x01:
-            if len(data) < 6:
+            if len(data) < 4:
                 return True
             
-            address, port = struct.unpack("!IH", data[:6])
+            address, = struct.unpack("!I", data[:4])
             address = struct.pack("!I", address)
             address = socket.inet_ntop(socket.AF_INET, address)
             
             self.remoteAddress = address
-            self.remotePort = port
             
-            data = data[6:]
-            
-            self.data = data
+            data = data[4:]
         else:
             if addressType == 0x03:
                 if len(data) < 1:
@@ -861,24 +870,37 @@ class SOCKS5InputProtocol(protocol.Protocol):
                 
                 data = data[1:]
                 
-                if len(data) < addressLength + 2:
+                if len(data) < addressLength:
                     return True
                 
-                address, port = struct.unpack("!%dsH" % addressLength, data[:addressLength + 2])
+                address, = struct.unpack("!%ds" % addressLength, data[:addressLength])
                 
                 self.remoteAddress = address
-                self.remotePort = port
                 
-                data = data[addressLength + 2:]
-                
-                self.data = data
+                data = data[addressLength:]
             else:
-                response = struct.pack("!BBBBIH", 0x05, 0x08, 0x00, 0x01, 0, 0)
-                
-                self.transport.write(response)
-                self.transport.loseConnection()
-                
-                return True
+                if addressType == 0x04:
+                    if len(data) < 16:
+                        return True
+                    
+                    address1, address2, address3, address4 = struct.unpack("!IIII", data[:16])
+                    address = struct.pack("!IIII", address1, address2, address3, address4)
+                    address = socket.inet_ntop(socket.AF_INET6, address)
+                    
+                    self.remoteAddress = address
+                    
+                    data = data[16:]
+        
+        if len(data) < 2:
+            return True
+        
+        port, = struct.unpack("!H", data[:2])
+        
+        self.remotePort = port
+        
+        data = data[2:]
+        
+        self.data = data
         
         twunnel.logger.log(2, "remoteAddress: " + self.remoteAddress)
         twunnel.logger.log(2, "remotePort: " + str(self.remotePort))
