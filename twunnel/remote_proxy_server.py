@@ -703,6 +703,8 @@ class WSInputProtocolFactory(autobahn.twisted.websocket.WebSocketServerFactory):
         self.configuration = configuration
     
     def buildProtocol(self, *args, **kwargs):
+        twunnel.logger.log(3, "trace: WSInputProtocolFactory.buildProtocol")
+        
         inputProtocol = autobahn.twisted.websocket.WebSocketServerFactory.buildProtocol(self, *args, **kwargs)
         inputProtocol.configuration = self.configuration
         return inputProtocol

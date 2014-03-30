@@ -1,7 +1,7 @@
 # Copyright (c) Jeroen Van Steirteghem
 # See LICENSE
 
-from twisted.internet import protocol, reactor
+from twisted.internet import protocol, reactor, ssl
 from twisted.internet.abstract import isIPAddress, isIPv6Address
 import base64
 import socket
@@ -147,6 +147,19 @@ class Tunnel(object):
                 i = i - 1
             
             return reactor.connectTCP(self.configuration["PROXY_SERVERS"][i]["ADDRESS"], self.configuration["PROXY_SERVERS"][i]["PORT"], tunnelProtocolFactory, timeout, bindAddress)
+    
+    def connectTCP(self, address, port, outputProtocolFactory, timeout=30, bindAddress=None):
+        twunnel.logger.log(3, "trace: Tunnel.connectTCP")
+        
+        self.connect(address, port, outputProtocolFactory, None, timeout, bindAddress)
+    
+    def connectSSL(self, address, port, outputProtocolFactory, contextFactory=None, timeout=30, bindAddress=None):
+        twunnel.logger.log(3, "trace: Tunnel.connectSSL")
+        
+        if contextFactory is None:
+            contextFactory = ssl.ClientContextFactory()
+        
+        self.connect(address, port, outputProtocolFactory, contextFactory, timeout, bindAddress)
     
     def getTunnelOutputProtocolFactoryClass(self, type):
         twunnel.logger.log(3, "trace: Tunnel.getTunnelOutputProtocolFactoryClass")

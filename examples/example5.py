@@ -24,10 +24,7 @@ def install_DNS_RESOLVER():
     {
         "DNS_RESOLVER":
         {
-            "HOSTS":
-            {
-                "FILE": "files/DNS/H.txt"
-            },
+            "FILE": "files/DNS/H.txt",
             "SERVERS":
             [
                 {
@@ -39,7 +36,8 @@ def install_DNS_RESOLVER():
                     "PORT": 53
                 }
             ]
-        }
+        },
+        "PROXY_SERVERS": []
     }
     
     resolver = dns_resolver.createResolver(configuration)

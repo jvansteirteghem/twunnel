@@ -155,6 +155,8 @@ class OutputProtocolFactory(protocol.ClientFactory):
         self.inputProtocol = inputProtocol
         
     def buildProtocol(self, *args, **kwargs):
+        twunnel.logger.log(3, "trace: OutputProtocolFactory.buildProtocol")
+        
         outputProtocol = protocol.ClientFactory.buildProtocol(self, *args, **kwargs)
         outputProtocol.inputProtocol = self.inputProtocol
         outputProtocol.inputProtocol.outputProtocol = outputProtocol
@@ -458,6 +460,8 @@ class HTTPSInputProtocolFactory(protocol.ClientFactory):
         self.outputProtocolConnectionManager = outputProtocolConnectionManager
     
     def buildProtocol(self, *args, **kwargs):
+        twunnel.logger.log(3, "trace: HTTPSInputProtocolFactory.buildProtocol")
+        
         inputProtocol = protocol.ClientFactory.buildProtocol(self, *args, **kwargs)
         inputProtocol.configuration = self.configuration
         inputProtocol.outputProtocolConnectionManager = self.outputProtocolConnectionManager
@@ -656,6 +660,8 @@ class SOCKS4InputProtocolFactory(protocol.ClientFactory):
         self.outputProtocolConnectionManager = outputProtocolConnectionManager
     
     def buildProtocol(self, *args, **kwargs):
+        twunnel.logger.log(3, "trace: SOCKS4InputProtocolFactory.buildProtocol")
+        
         inputProtocol = protocol.ClientFactory.buildProtocol(self, *args, **kwargs)
         inputProtocol.configuration = self.configuration
         inputProtocol.outputProtocolConnectionManager = self.outputProtocolConnectionManager
@@ -1002,6 +1008,8 @@ class SOCKS5InputProtocolFactory(protocol.ClientFactory):
         self.outputProtocolConnectionManager = outputProtocolConnectionManager
     
     def buildProtocol(self, *args, **kwargs):
+        twunnel.logger.log(3, "trace: SOCKS5InputProtocolFactory.buildProtocol")
+        
         inputProtocol = protocol.ClientFactory.buildProtocol(self, *args, **kwargs)
         inputProtocol.configuration = self.configuration
         inputProtocol.outputProtocolConnectionManager = self.outputProtocolConnectionManager
@@ -1504,6 +1512,8 @@ class WSOutputProtocolFactory(autobahn.twisted.websocket.WebSocketClientFactory)
         self.inputProtocol = inputProtocol
         
     def buildProtocol(self, *args, **kwargs):
+        twunnel.logger.log(3, "trace: WSOutputProtocolFactory.buildProtocol")
+        
         outputProtocol = autobahn.twisted.websocket.WebSocketClientFactory.buildProtocol(self, *args, **kwargs)
         outputProtocol.configuration = self.configuration
         outputProtocol.remoteAddress = self.remoteAddress
