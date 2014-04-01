@@ -148,19 +148,6 @@ class Tunnel(object):
             
             return reactor.connectTCP(self.configuration["PROXY_SERVERS"][i]["ADDRESS"], self.configuration["PROXY_SERVERS"][i]["PORT"], tunnelProtocolFactory, timeout, bindAddress)
     
-    def connectTCP(self, address, port, outputProtocolFactory, timeout=30, bindAddress=None):
-        twunnel.logger.log(3, "trace: Tunnel.connectTCP")
-        
-        self.connect(address, port, outputProtocolFactory, None, timeout, bindAddress)
-    
-    def connectSSL(self, address, port, outputProtocolFactory, contextFactory=None, timeout=30, bindAddress=None):
-        twunnel.logger.log(3, "trace: Tunnel.connectSSL")
-        
-        if contextFactory is None:
-            contextFactory = ssl.ClientContextFactory()
-        
-        self.connect(address, port, outputProtocolFactory, contextFactory, timeout, bindAddress)
-    
     def getTunnelOutputProtocolFactoryClass(self, type):
         twunnel.logger.log(3, "trace: Tunnel.getTunnelOutputProtocolFactoryClass")
         
@@ -619,3 +606,31 @@ class SOCKS5TunnelOutputProtocolFactory(protocol.ClientFactory):
     
     def clientConnectionLost(self, connector, reason):
         twunnel.logger.log(3, "trace: SOCKS5TunnelOutputProtocolFactory.clientConnectionLost")
+
+class TunnelReactor(object):
+    def __init__(self, tunnel):
+        twunnel.logger.log(3, "trace: TunnelReactor.__init__")
+        
+        self.tunnel = tunnel
+    
+    def connectTCP(self, host, port, factory, timeout=30, bindAddress=None):
+        twunnel.logger.log(3, "trace: TunnelReactor.connectTCP")
+        
+        self.tunnel.connect(host, port, factory, None, timeout, bindAddress)
+    
+    def connectSSL(self, host, port, factory, contextFactory, timeout=30, bindAddress=None):
+        twunnel.logger.log(3, "trace: TunnelReactor.connectSSL")
+        
+        self.tunnel.connect(host, port, factory, contextFactory, timeout, bindAddress)
+    
+    def __getattr__(self, attr):
+        twunnel.logger.log(3, "trace: TunnelReactor.__getattr__")
+        
+        return getattr(reactor, attr)
+
+def createTunnelReactor(configuration):
+    tunnel = createTunnel(configuration)
+    
+    tunnelReactor = TunnelReactor(tunnel)
+    
+    return tunnelReactor

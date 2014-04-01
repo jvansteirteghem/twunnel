@@ -23,6 +23,7 @@ Examples
   - Example 6: A HTTPS TCP tunnel.
   - Example 7: A HTTPS TCP, SOCKS5 TCP tunnel.
   - Example 8: A SOCKS4 TCP tunnel.
+  - Example 9: A TCP tunnel.
 
 - https://github.com/jvansteirteghem/twunnel-app
 - https://github.com/jvansteirteghem/twunnel-app-openshift
