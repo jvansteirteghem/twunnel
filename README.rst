@@ -7,6 +7,7 @@ Supports:
 
 - TCP
 - TCP over SSH
+- TCP over SSL
 - TCP over WS
 - TCP over WSS
 
@@ -24,6 +25,7 @@ Examples
   - Example 7: A HTTPS TCP, SOCKS5 TCP tunnel.
   - Example 8: A SOCKS4 TCP tunnel.
   - Example 9: A TCP tunnel.
+  - Example 10: A SOCKS5 TCP over SSL tunnel.
 
 - https://github.com/jvansteirteghem/twunnel-app
 - https://github.com/jvansteirteghem/twunnel-app-openshift

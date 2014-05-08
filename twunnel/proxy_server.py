@@ -255,7 +255,6 @@ class HTTPSTunnelOutputProtocol(protocol.Protocol):
         self.factory.tunnelProtocol.tunnelOutputProtocol_connectionMade(data)
         
         self.data = ""
-        self.dataState = 1
         
         return True
 

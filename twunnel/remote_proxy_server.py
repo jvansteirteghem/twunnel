@@ -10,6 +10,7 @@ from twisted.internet import defer, interfaces, reactor, ssl, tcp
 from zope.interface import implements
 import autobahn.twisted.websocket
 import json
+import OpenSSL
 import twunnel.local_proxy_server
 import twunnel.logger
 import twunnel.proxy_server
@@ -45,9 +46,13 @@ def setDefaultConfiguration(configuration, keys):
                 configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i].setdefault("CONNECTIONS", 0)
                 i = i + 1
         else:
-            if configuration["REMOTE_PROXY_SERVER"]["TYPE"] == "WS":
+            if configuration["REMOTE_PROXY_SERVER"]["TYPE"] == "SSL":
                 configuration["REMOTE_PROXY_SERVER"].setdefault("ADDRESS", "")
                 configuration["REMOTE_PROXY_SERVER"].setdefault("PORT", 0)
+                configuration["REMOTE_PROXY_SERVER"].setdefault("CERTIFICATE", {})
+                configuration["REMOTE_PROXY_SERVER"]["CERTIFICATE"].setdefault("FILE", "")
+                configuration["REMOTE_PROXY_SERVER"]["CERTIFICATE"].setdefault("KEY", {})
+                configuration["REMOTE_PROXY_SERVER"]["CERTIFICATE"]["KEY"].setdefault("FILE", "")
                 configuration["REMOTE_PROXY_SERVER"].setdefault("ACCOUNTS", [])
                 i = 0
                 while i < len(configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]):
@@ -55,19 +60,29 @@ def setDefaultConfiguration(configuration, keys):
                     configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i].setdefault("PASSWORD", "")
                     i = i + 1
             else:
-                if configuration["REMOTE_PROXY_SERVER"]["TYPE"] == "WSS":
+                if configuration["REMOTE_PROXY_SERVER"]["TYPE"] == "WS":
                     configuration["REMOTE_PROXY_SERVER"].setdefault("ADDRESS", "")
                     configuration["REMOTE_PROXY_SERVER"].setdefault("PORT", 0)
-                    configuration["REMOTE_PROXY_SERVER"].setdefault("CERTIFICATE", {})
-                    configuration["REMOTE_PROXY_SERVER"]["CERTIFICATE"].setdefault("FILE", "")
-                    configuration["REMOTE_PROXY_SERVER"]["CERTIFICATE"].setdefault("KEY", {})
-                    configuration["REMOTE_PROXY_SERVER"]["CERTIFICATE"]["KEY"].setdefault("FILE", "")
                     configuration["REMOTE_PROXY_SERVER"].setdefault("ACCOUNTS", [])
                     i = 0
                     while i < len(configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]):
                         configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i].setdefault("NAME", "")
                         configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i].setdefault("PASSWORD", "")
                         i = i + 1
+                else:
+                    if configuration["REMOTE_PROXY_SERVER"]["TYPE"] == "WSS":
+                        configuration["REMOTE_PROXY_SERVER"].setdefault("ADDRESS", "")
+                        configuration["REMOTE_PROXY_SERVER"].setdefault("PORT", 0)
+                        configuration["REMOTE_PROXY_SERVER"].setdefault("CERTIFICATE", {})
+                        configuration["REMOTE_PROXY_SERVER"]["CERTIFICATE"].setdefault("FILE", "")
+                        configuration["REMOTE_PROXY_SERVER"]["CERTIFICATE"].setdefault("KEY", {})
+                        configuration["REMOTE_PROXY_SERVER"]["CERTIFICATE"]["KEY"].setdefault("FILE", "")
+                        configuration["REMOTE_PROXY_SERVER"].setdefault("ACCOUNTS", [])
+                        i = 0
+                        while i < len(configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"]):
+                            configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i].setdefault("NAME", "")
+                            configuration["REMOTE_PROXY_SERVER"]["ACCOUNTS"][i].setdefault("PASSWORD", "")
+                            i = i + 1
 
 def createPort(configuration):
     setDefaultConfiguration(configuration, ["REMOTE_PROXY_SERVER"])
@@ -75,13 +90,16 @@ def createPort(configuration):
     if configuration["REMOTE_PROXY_SERVER"]["TYPE"] == "SSH":
         return createSSHPort(configuration)
     else:
-        if configuration["REMOTE_PROXY_SERVER"]["TYPE"] == "WS":
-            return createWSPort(configuration)
+        if configuration["REMOTE_PROXY_SERVER"]["TYPE"] == "SSL":
+            return createSSLPort(configuration)
         else:
-            if configuration["REMOTE_PROXY_SERVER"]["TYPE"] == "WSS":
+            if configuration["REMOTE_PROXY_SERVER"]["TYPE"] == "WS":
                 return createWSPort(configuration)
             else:
-                return None
+                if configuration["REMOTE_PROXY_SERVER"]["TYPE"] == "WSS":
+                    return createWSPort(configuration)
+                else:
+                    return None
 
 # SSH
 
@@ -417,6 +435,45 @@ def createSSHPort(configuration):
     
     return tcp.Port(configuration["REMOTE_PROXY_SERVER"]["PORT"], factory, 50, configuration["REMOTE_PROXY_SERVER"]["ADDRESS"], reactor)
 
+# SSL
+
+class SSLServerContextFactory(ssl.ContextFactory):
+    isClient = 0
+    
+    def __init__(self, certificateFile, certificateKeyFile):
+        twunnel.logger.log(3, "trace: SSLServerContextFactory.__init__")
+        
+        self.certificateFile = certificateFile
+        self.certificateKeyFile = certificateKeyFile
+        
+    def getContext(self):
+        twunnel.logger.log(3, "trace: SSLServerContextFactory.getContext")
+        
+        context = OpenSSL.SSL.Context(OpenSSL.SSL.SSLv23_METHOD)
+        context.set_options(OpenSSL.SSL.OP_NO_SSLv2)
+        context.use_certificate_file(self.certificateFile)
+        context.use_privatekey_file(self.certificateKeyFile)
+        
+        return context
+
+class SSLInputProtocolFactory(twunnel.local_proxy_server.SOCKS5InputProtocolFactory):
+    def __init__(self, configuration):
+        twunnel.logger.log(3, "trace: SSLInputProtocolFactory.__init__")
+        
+        configuration["LOCAL_PROXY_SERVER"] = configuration["REMOTE_PROXY_SERVER"]
+        configuration["REMOTE_PROXY_SERVERS"] = []
+        
+        outputProtocolConnectionManager = twunnel.local_proxy_server.OutputProtocolConnectionManager(configuration)
+        
+        twunnel.local_proxy_server.SOCKS5InputProtocolFactory.__init__(self, configuration, outputProtocolConnectionManager)
+
+def createSSLPort(configuration):
+    factory = SSLInputProtocolFactory(configuration)
+    
+    contextFactory = SSLServerContextFactory(configuration["REMOTE_PROXY_SERVER"]["CERTIFICATE"]["FILE"], configuration["REMOTE_PROXY_SERVER"]["CERTIFICATE"]["KEY"]["FILE"])
+    
+    return ssl.Port(configuration["REMOTE_PROXY_SERVER"]["PORT"], factory, contextFactory, 50, configuration["REMOTE_PROXY_SERVER"]["ADDRESS"], reactor)
+
 # WS
 
 class WSOutputProtocol(twunnel.local_proxy_server.OutputProtocol):
@@ -717,6 +774,6 @@ def createWSPort(configuration):
     else:
         factory = WSInputProtocolFactory(configuration, "wss://" + str(configuration["REMOTE_PROXY_SERVER"]["ADDRESS"]) + ":" + str(configuration["REMOTE_PROXY_SERVER"]["PORT"]))
         
-        contextFactory = ssl.DefaultOpenSSLContextFactory(configuration["REMOTE_PROXY_SERVER"]["CERTIFICATE"]["KEY"]["FILE"], configuration["REMOTE_PROXY_SERVER"]["CERTIFICATE"]["FILE"])
+        contextFactory = SSLServerContextFactory(configuration["REMOTE_PROXY_SERVER"]["CERTIFICATE"]["FILE"], configuration["REMOTE_PROXY_SERVER"]["CERTIFICATE"]["KEY"]["FILE"])
         
         return ssl.Port(configuration["REMOTE_PROXY_SERVER"]["PORT"], factory, contextFactory, 50, configuration["REMOTE_PROXY_SERVER"]["ADDRESS"], reactor)

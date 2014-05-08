@@ -37,7 +37,7 @@ def start_LOCAL_PROXY_SERVER():
         "REMOTE_PROXY_SERVERS":
         [
             {
-                "TYPE": "WSS",
+                "TYPE": "SSL",
                 "ADDRESS": "127.0.0.1",
                 "PORT": 8443,
                 "CERTIFICATE":
@@ -72,7 +72,7 @@ def start_REMOTE_PROXY_SERVER():
         "PROXY_SERVERS": [],
         "REMOTE_PROXY_SERVER":
         {
-            "TYPE": "WSS",
+            "TYPE": "SSL",
             "ADDRESS": "127.0.0.1",
             "PORT": 8443,
             "CERTIFICATE":
