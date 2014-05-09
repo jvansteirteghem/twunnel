@@ -85,7 +85,7 @@ def setDefaultConfiguration(configuration, keys):
                             i = i + 1
 
 def createPort(configuration):
-    setDefaultConfiguration(configuration, ["REMOTE_PROXY_SERVER"])
+    setDefaultConfiguration(configuration, ["PROXY_SERVERS", "REMOTE_PROXY_SERVER"])
     
     if configuration["REMOTE_PROXY_SERVER"]["TYPE"] == "SSH":
         return createSSHPort(configuration)
