@@ -18,7 +18,9 @@ def generateKey(configuration):
     else:
         data = key.exportKey("PEM", pkcs=1)
     
-    open(configuration["KEY"]["FILE"], "wb").write(data)
+    f = open(configuration["KEY"]["FILE"], "wb")
+    f.write(data)
+    f.close()
 
 def generateCertificateAuthority(configuration):
     configuration.setdefault("CERTIFICATE", {})
@@ -63,14 +65,18 @@ def generateCertificateAuthority(configuration):
     
     data = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, ca)
     
-    open(configuration["CERTIFICATE"]["AUTHORITY"]["FILE"], "wb").write(data)
+    f = open(configuration["CERTIFICATE"]["AUTHORITY"]["FILE"], "wb")
+    f.write(data)
+    f.close()
     
     if configuration["CERTIFICATE"]["AUTHORITY"]["KEY"]["PASSPHRASE"] != "":
         data = OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, ca_key, "aes-256-cbc", configuration["CERTIFICATE"]["AUTHORITY"]["KEY"]["PASSPHRASE"])
     else:
         data = OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, ca_key)
     
-    open(configuration["CERTIFICATE"]["AUTHORITY"]["KEY"]["FILE"], "wb").write(data)
+    f = open(configuration["CERTIFICATE"]["AUTHORITY"]["KEY"]["FILE"], "wb")
+    f.write(data)
+    f.close()
 
 def generateCertificate(configuration):
     configuration.setdefault("CERTIFICATE", {})
@@ -92,11 +98,15 @@ def generateCertificate(configuration):
     configuration["CERTIFICATE"]["SUBJECT"].setdefault("COMMON_NAME", "")
     configuration["CERTIFICATE"]["SUBJECT"].setdefault("ALTERNATIVE_NAME", "")
     
-    data = open(configuration["CERTIFICATE"]["AUTHORITY"]["FILE"], "rb").read()
+    f = open(configuration["CERTIFICATE"]["AUTHORITY"]["FILE"], "rb")
+    data = f.read()
+    f.close()
     
     ca = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, data)
     
-    data = open(configuration["CERTIFICATE"]["AUTHORITY"]["KEY"]["FILE"], "rb").read()
+    f = open(configuration["CERTIFICATE"]["AUTHORITY"]["KEY"]["FILE"], "rb")
+    data = f.read()
+    f.close()
     
     if configuration["CERTIFICATE"]["AUTHORITY"]["KEY"]["PASSPHRASE"] != "":
         ca_key = OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, data, configuration["CERTIFICATE"]["AUTHORITY"]["KEY"]["PASSPHRASE"])
@@ -133,11 +143,15 @@ def generateCertificate(configuration):
     
     data = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, c)
     
-    open(configuration["CERTIFICATE"]["FILE"], "wb").write(data)
+    f = open(configuration["CERTIFICATE"]["FILE"], "wb")
+    f.write(data)
+    f.close()
     
     if configuration["CERTIFICATE"]["KEY"]["PASSPHRASE"] != "":
         data = OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, c_key, "aes-256-cbc", configuration["CERTIFICATE"]["KEY"]["PASSPHRASE"])
     else:
         data = OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, c_key)
     
-    open(configuration["CERTIFICATE"]["KEY"]["FILE"], "wb").write(data)
+    f = open(configuration["CERTIFICATE"]["KEY"]["FILE"], "wb")
+    f.write(data)
+    f.close()
